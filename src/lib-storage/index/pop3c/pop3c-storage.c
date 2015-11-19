@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2011-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "ioloop.h"
@@ -41,7 +41,7 @@ pop3c_storage_create(struct mail_storage *_storage,
 		*error_r = "missing pop3c_host";
 		return -1;
 	}
-	if (storage->set->pop3c_password == '\0') {
+	if (storage->set->pop3c_password[0] == '\0') {
 		*error_r = "missing pop3c_password";
 		return -1;
 	}
@@ -63,6 +63,7 @@ pop3c_client_create_from_set(struct mail_storage *storage,
 	client_set.master_user = set->pop3c_master_user;
 	client_set.password = set->pop3c_password;
 	client_set.dns_client_socket_path =
+		storage->user->set->base_dir[0] == '\0' ? "" :
 		t_strconcat(storage->user->set->base_dir, "/",
 			    DNS_CLIENT_SOCKET_NAME, NULL);
 	str = t_str_new(128);

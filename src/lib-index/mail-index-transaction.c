@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2003-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "ioloop.h"
@@ -9,7 +9,6 @@
 #include "mail-transaction-log-private.h"
 #include "mail-index-transaction-private.h"
 
-#include <stdlib.h>
 
 void (*hook_mail_index_transaction_created)
 		(struct mail_index_transaction *t) = NULL;
@@ -176,8 +175,7 @@ mail_index_transaction_commit_real(struct mail_index_transaction *t,
 	if (t->reset) {
 		/* get rid of the old index. it might just confuse readers,
 		   especially if it's broken. */
-		if (unlink(log->index->filepath) < 0 && errno != ENOENT)
-			i_error("unlink(%s) failed: %m", log->index->filepath);
+		i_unlink_if_exists(log->index->filepath);
 	}
 
 	*commit_size_r = log_offset2 - log_offset1;

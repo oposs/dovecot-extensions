@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2013-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "str.h"
@@ -135,8 +135,10 @@ i_stream_mail_filter_stat(struct istream_private *stream, bool exact)
 
 	i_assert(!exact);
 
-	if (i_stream_stat(stream->parent, exact, &st) < 0)
+	if (i_stream_stat(stream->parent, exact, &st) < 0) {
+		stream->istream.stream_errno = stream->parent->stream_errno;
 		return -1;
+	}
 	stream->statbuf = *st;
 	return 0;
 }

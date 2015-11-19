@@ -1,11 +1,9 @@
-/* Copyright (c) 2009-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2009-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "array.h"
 #include "mail-storage-private.h"
 #include "fail-mail-storage.h"
-
-extern struct mail_vfuncs fail_mail_vfuncs;
 
 struct mail *
 fail_mailbox_mail_alloc(struct mailbox_transaction_context *t,
@@ -196,7 +194,7 @@ fail_mail_get_special(struct mail *mail ATTR_UNUSED,
 	return -1;
 }
 
-static struct mail *fail_mail_get_real_mail(struct mail *mail)
+static struct mail * fail_mail_get_real_mail(struct mail *mail)
 {
 	return mail;
 }

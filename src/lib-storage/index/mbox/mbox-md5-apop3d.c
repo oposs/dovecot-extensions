@@ -1,11 +1,10 @@
-/* Copyright (c) 2004-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2004-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "md5.h"
 #include "message-parser.h"
 #include "mbox-md5.h"
 
-#include <stdlib.h>
 
 struct mbox_md5_context {
 	struct md5_context hdr_md5_ctx;

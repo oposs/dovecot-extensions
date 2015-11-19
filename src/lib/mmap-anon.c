@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2002-2015 Dovecot authors, see the included COPYING file */
 
 /* @UNSAFE: whole file */
 
@@ -19,7 +19,6 @@
 
 #include "fd-close-on-exec.h"
 
-#include <stdlib.h>
 #include <sys/mman.h>
 
 #define MMAP_SIGNATURE 0xdeadbeef

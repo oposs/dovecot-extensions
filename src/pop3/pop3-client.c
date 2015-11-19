@@ -1,9 +1,10 @@
-/* Copyright (c) 2002-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2002-2015 Dovecot authors, see the included COPYING file */
 
 #include "pop3-common.h"
 #include "array.h"
 #include "ioloop.h"
 #include "net.h"
+#include "iostream.h"
 #include "istream.h"
 #include "ostream.h"
 #include "crc32.h"
@@ -19,7 +20,6 @@
 #include "mail-search-build.h"
 #include "mail-namespace.h"
 
-#include <stdlib.h>
 #include <unistd.h>
 
 /* max. length of input command line (spec says 512) */
@@ -193,6 +193,8 @@ static int read_mailbox(struct client *client, uint32_t *failed_uid_r)
 		if ((mail_get_flags(mail) & MAIL_SEEN) != 0)
 			client->last_seen_pop3_msn = msgnum + 1;
 		client->total_size += size;
+		if (client->highest_seq < mail->seq)
+			client->highest_seq = mail->seq;
 
 		array_append(&message_sizes, &size, 1);
 		msgnum++;
@@ -394,7 +396,7 @@ int client_create(int fd_in, int fd_out, const char *session_id,
 	o_stream_set_flush_callback(client->output, client_output, client);
 
 	p_array_init(&client->module_contexts, client->pool, 5);
-	client->io = io_add(fd_in, IO_READ, client_input, client);
+	client->io = io_add_istream(client->input, client_input, client);
         client->last_input = ioloop_time;
 	client->to_idle = timeout_add(CLIENT_IDLE_TIMEOUT_MSECS,
 				      client_idle_timeout, client);
@@ -523,6 +525,7 @@ static const char *client_stats(struct client *client)
 		{ 'o', NULL, "output" },
 		{ 'u', NULL, "uidl_change" },
 		{ '\0', NULL, "session" },
+		{ 'd', NULL, "deleted_bytes" },
 		{ '\0', NULL, NULL }
 	};
 	struct var_expand_table *tab;
@@ -535,7 +538,8 @@ static const char *client_stats(struct client *client)
 	tab[1].value = dec2str(client->top_count);
 	tab[2].value = dec2str(client->retr_bytes);
 	tab[3].value = dec2str(client->retr_count);
-	tab[4].value = dec2str(client->expunged_count);
+	tab[4].value = client->delete_success ?
+		dec2str(client->deleted_count) : 0;
 	tab[5].value = dec2str(client->messages_count);
 	tab[6].value = dec2str(client->total_size);
 	tab[7].value = dec2str(client->input->v_offset);
@@ -546,19 +550,12 @@ static const char *client_stats(struct client *client)
 	else
 		tab[9].value = "";
 	tab[10].value = client->session_id;
+	tab[11].value = client->delete_success ?
+		dec2str(client->deleted_size) : 0;
 
 	str = t_str_new(128);
 	var_expand(str, client->set->pop3_logout_format, tab);
 	return str_c(str);
-}
-
-static const char *client_get_disconnect_reason(struct client *client)
-{
-	errno = client->input->stream_errno != 0 ?
-		client->input->stream_errno :
-		client->output->stream_errno;
-	return errno == 0 || errno == EPIPE ? "Connection closed" :
-		t_strdup_printf("Connection closed: %m");
 }
 
 void client_destroy(struct client *client, const char *reason)
@@ -572,8 +569,10 @@ static void client_default_destroy(struct client *client, const char *reason)
 		(void)client_update_mails(client);
 
 	if (!client->disconnected) {
-		if (reason == NULL)
-			reason = client_get_disconnect_reason(client);
+		if (reason == NULL) {
+			reason = io_stream_get_disconnect_reason(client->input,
+								 client->output);
+		}
 		i_info("%s %s", reason, client_stats(client));
 	}
 
@@ -584,8 +583,6 @@ static void client_default_destroy(struct client *client, const char *reason)
 		client->cmd(client);
 		i_assert(client->cmd == NULL);
 	}
-	pop3_client_count--;
-	DLLIST_REMOVE(&pop3_clients, client);
 
 	if (client->trans != NULL) {
 		/* client didn't QUIT, but we still want to save any changes
@@ -632,6 +629,9 @@ static void client_default_destroy(struct client *client, const char *reason)
 	if (client->fd_in != client->fd_out)
 		net_disconnect(client->fd_out);
 	mail_storage_service_user_free(&client->service_user);
+
+	pop3_client_count--;
+	DLLIST_REMOVE(&pop3_clients, client);
 	pool_unref(&client->pool);
 
 	master_service_client_connection_destroyed(master_service);
@@ -713,7 +713,7 @@ void client_send_storage_error(struct client *client)
 	errstr = mailbox_get_last_error(client->mailbox, &error);
 	switch (error) {
 	case MAIL_ERROR_TEMP:
-	case MAIL_ERROR_NOSPACE:
+	case MAIL_ERROR_NOQUOTA:
 	case MAIL_ERROR_INUSE:
 		client_send_line(client, "-ERR [SYS/TEMP] %s", errstr);
 		break;
@@ -810,10 +810,11 @@ static int client_output(struct client *client)
 
 	if (client->cmd == NULL) {
 		if (o_stream_get_buffer_used_size(client->output) <
-		    POP3_OUTBUF_THROTTLE_SIZE/2 && client->io == NULL) {
+		    POP3_OUTBUF_THROTTLE_SIZE/2 && client->io == NULL &&
+		    !client->input->closed) {
 			/* enable input again */
-			client->io = io_add(i_stream_get_fd(client->input),
-					    IO_READ, client_input, client);
+			client->io = io_add_istream(client->input, client_input,
+						    client);
 		}
 		if (client->io != NULL && client->waiting_input) {
 			if (!client_handle_input(client)) {
@@ -835,15 +836,17 @@ static int client_output(struct client *client)
 	}
 }
 
-void clients_destroy_all(void)
+void clients_destroy_all(struct mail_storage_service_ctx *storage_service)
 {
 	while (pop3_clients != NULL) {
 		if (pop3_clients->cmd == NULL) {
 			client_send_line(pop3_clients,
 				"-ERR [SYS/TEMP] Server shutting down.");
 		}
+		mail_storage_service_io_activate_user(pop3_clients->service_user);
 		client_destroy(pop3_clients, "Server shutting down.");
 	}
+	mail_storage_service_io_deactivate(storage_service);
 }
 
 struct pop3_client_vfuncs pop3_client_vfuncs = {

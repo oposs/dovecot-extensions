@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2010-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 
@@ -83,7 +83,8 @@ o_stream_lzma_send_chunk(struct lzma_ostream *zstream,
 			}
 		}
 
-		switch (lzma_code(zs, LZMA_RUN)) {
+		ret = lzma_code(zs, LZMA_RUN);
+		switch (ret) {
 		case LZMA_OK:
 			break;
 		case LZMA_MEM_ERROR:
@@ -91,7 +92,8 @@ o_stream_lzma_send_chunk(struct lzma_ostream *zstream,
 				       "lzma.write(%s): Out of memory",
 				       o_stream_get_name(&zstream->ostream.ostream));
 		default:
-			i_unreached();
+			i_panic("lzma.write(%s) failed with unexpected code %d",
+				o_stream_get_name(&zstream->ostream.ostream), ret);
 		}
 	}
 	size -= zs->avail_in;
@@ -117,25 +119,17 @@ static int o_stream_lzma_send_flush(struct lzma_ostream *zstream)
 	if (zstream->flushed)
 		return 0;
 
+	if ((ret = o_stream_flush_parent_if_needed(&zstream->ostream)) <= 0)
+		return ret;
 	if ((ret = o_stream_zlib_send_outbuf(zstream)) <= 0)
 		return ret;
 
 	i_assert(zstream->outbuf_used == 0);
 	do {
-		len = sizeof(zstream->outbuf) - zs->avail_out;
-		if (len != 0) {
-			zs->next_out = zstream->outbuf;
-			zs->avail_out = sizeof(zstream->outbuf);
-
-			zstream->outbuf_used = len;
-			if ((ret = o_stream_zlib_send_outbuf(zstream)) <= 0)
-				return ret;
-			if (done)
-				break;
-		}
-
 		ret = lzma_code(zs, LZMA_FINISH);
 		switch (ret) {
+		case LZMA_OK:
+			break;
 		case LZMA_STREAM_END:
 			done = TRUE;
 			break;
@@ -144,9 +138,19 @@ static int o_stream_lzma_send_flush(struct lzma_ostream *zstream)
 				       "lzma.write(%s): Out of memory",
 				       o_stream_get_name(&zstream->ostream.ostream));
 		default:
-			i_unreached();
+			i_panic("lzma.write(%s) flush failed with unexpected code %d",
+				o_stream_get_name(&zstream->ostream.ostream), ret);
 		}
-	} while (zs->avail_out != sizeof(zstream->outbuf));
+		if (zs->avail_out == 0 || done) {
+			len = sizeof(zstream->outbuf) - zs->avail_out;
+			zs->next_out = zstream->outbuf;
+			zs->avail_out = sizeof(zstream->outbuf);
+
+			zstream->outbuf_used = len;
+			if ((ret = o_stream_zlib_send_outbuf(zstream)) <= 0)
+				return ret;
+		}
+	} while (!done);
 
 	zstream->flushed = TRUE;
 	return 0;

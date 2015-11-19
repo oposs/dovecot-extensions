@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2002-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "array.h"
@@ -9,8 +9,6 @@
 #include "mail-search-build.h"
 #include "mail-search.h"
 
-static struct mail_search_arg *
-mail_search_arg_dup(pool_t pool, const struct mail_search_arg *arg);
 static bool mail_search_arg_equals(const struct mail_search_arg *arg1,
 				   const struct mail_search_arg *arg2);
 
@@ -62,8 +60,7 @@ mailbox_uidset_change(struct mail_search_arg *arg, struct mailbox *box,
 	}
 }
 
-static void
-mail_search_args_init_sub(struct mail_search_args *args,
+void mail_search_arg_init(struct mail_search_args *args,
 			  struct mail_search_arg *arg,
 			  bool change_uidsets,
 			  const ARRAY_TYPE(seq_range) *search_saved_uidset)
@@ -87,8 +84,8 @@ mail_search_args_init_sub(struct mail_search_args *args,
 			keywords[0] = arg->value.str;
 			keywords[1] = NULL;
 
-			i_assert(arg->value.keywords == NULL);
-			arg->value.keywords =
+			i_assert(arg->initialized.keywords == NULL);
+			arg->initialized.keywords =
 				mailbox_keywords_create_valid(args->box,
 							      keywords);
 			break;
@@ -97,15 +94,15 @@ mail_search_args_init_sub(struct mail_search_args *args,
 			struct mail_namespace *ns =
 				mailbox_get_namespace(args->box);
 
-			arg->value.mailbox_glob =
+			arg->initialized.mailbox_glob =
 				imap_match_init(default_pool, arg->value.str,
 						TRUE, mail_namespace_get_sep(ns));
 			break;
 		}
 		case SEARCH_INTHREAD:
-			thread_args = arg->value.search_args;
+			thread_args = arg->initialized.search_args;
 			if (thread_args == NULL) {
-				arg->value.search_args = thread_args =
+				arg->initialized.search_args = thread_args =
 					p_new(args->pool,
 					      struct mail_search_args, 1);
 				thread_args->pool = args->pool;
@@ -120,9 +117,9 @@ mail_search_args_init_sub(struct mail_search_args *args,
 			/* fall through */
 		case SEARCH_SUB:
 		case SEARCH_OR:
-			mail_search_args_init_sub(args, arg->value.subargs,
-						  change_uidsets,
-						  search_saved_uidset);
+			mail_search_arg_init(args, arg->value.subargs,
+					     change_uidsets,
+					     search_saved_uidset);
 			break;
 		default:
 			break;
@@ -144,40 +141,38 @@ void mail_search_args_init(struct mail_search_args *args,
 	args->box = box;
 	if (!args->simplified)
 		mail_search_args_simplify(args);
-	mail_search_args_init_sub(args, args->args, change_uidsets,
-				  search_saved_uidset);
+	mail_search_arg_init(args, args->args, change_uidsets,
+			     search_saved_uidset);
 }
 
-static void mail_search_args_deinit_sub(struct mail_search_args *args,
-					struct mail_search_arg *arg)
+void mail_search_arg_deinit(struct mail_search_arg *arg)
 {
 	for (; arg != NULL; arg = arg->next) {
 		switch (arg->type) {
 		case SEARCH_MODSEQ:
 		case SEARCH_KEYWORDS:
-			if (arg->value.keywords == NULL)
+			if (arg->initialized.keywords == NULL)
 				break;
-			mailbox_keywords_unref(&arg->value.keywords);
+			mailbox_keywords_unref(&arg->initialized.keywords);
 			break;
 		case SEARCH_MAILBOX_GLOB:
-			if (arg->value.mailbox_glob == NULL)
+			if (arg->initialized.mailbox_glob == NULL)
 				break;
 
-			imap_match_deinit(&arg->value.mailbox_glob);
+			imap_match_deinit(&arg->initialized.mailbox_glob);
 			break;
 		case SEARCH_INTHREAD:
-			i_assert(arg->value.search_args->refcount > 0);
-			if (args->refcount == 0 &&
-			    arg->value.search_result != NULL) {
+			i_assert(arg->initialized.search_args->refcount > 0);
+			if (arg->value.search_result != NULL) {
 				mailbox_search_result_free(
 					&arg->value.search_result);
 			}
-			arg->value.search_args->refcount--;
-			arg->value.search_args->box = NULL;
+			arg->initialized.search_args->refcount--;
+			arg->initialized.search_args->box = NULL;
 			/* fall through */
 		case SEARCH_SUB:
 		case SEARCH_OR:
-			mail_search_args_deinit_sub(args, arg->value.subargs);
+			mail_search_arg_deinit(arg->value.subargs);
 			break;
 		default:
 			break;
@@ -190,7 +185,7 @@ void mail_search_args_deinit(struct mail_search_args *args)
 	if (--args->init_refcount > 0)
 		return;
 
-	mail_search_args_deinit_sub(args, args->args);
+	mail_search_arg_deinit(args->args);
 	args->box = NULL;
 }
 
@@ -283,6 +278,7 @@ mail_search_arg_dup_one(pool_t pool, const struct mail_search_arg *arg)
 		break;
 	case SEARCH_SEQSET:
 	case SEARCH_UIDSET:
+	case SEARCH_REAL_UID:
 		p_array_init(&new_arg->value.seqset, pool,
 			     array_count(&arg->value.seqset));
 		array_append_array(&new_arg->value.seqset, &arg->value.seqset);
@@ -323,7 +319,7 @@ mail_search_arg_dup_one(pool_t pool, const struct mail_search_arg *arg)
 	return new_arg;
 }
 
-static struct mail_search_arg *
+struct mail_search_arg *
 mail_search_arg_dup(pool_t pool, const struct mail_search_arg *arg)
 {
 	struct mail_search_arg *new_arg = NULL, **dest = &new_arg;
@@ -586,158 +582,6 @@ bool mail_search_args_match_mailbox(struct mail_search_args *args,
 	return TRUE;
 }
 
-static void
-mail_search_args_simplify_sub(struct mailbox *box,
-			      struct mail_search_arg *args, bool parent_and)
-{
-	struct mail_search_arg *sub, *prev = NULL;
-	struct mail_search_arg *prev_flags_arg, *prev_not_flags_arg;
-
-	prev_flags_arg = prev_not_flags_arg = NULL;
-	while (args != NULL) {
-		if (args->match_not && (args->type == SEARCH_SUB ||
-					args->type == SEARCH_OR)) {
-			/* neg(p and q and ..) == neg(p) or neg(q) or ..
-			   neg(p or q or ..) == neg(p) and neg(q) and .. */
-			args->type = args->type == SEARCH_SUB ?
-				SEARCH_OR : SEARCH_SUB;
-			args->match_not = FALSE;
-			sub = args->value.subargs;
-			do {
-				sub->match_not = !sub->match_not;
-				sub = sub->next;
-			} while (sub != NULL);
-		}
-
-		if ((args->type == SEARCH_SUB && parent_and) ||
-		    (args->type == SEARCH_OR && !parent_and) ||
-		    ((args->type == SEARCH_SUB || args->type == SEARCH_OR) &&
-		     args->value.subargs->next == NULL)) {
-			/* p and (q and ..) == p and q and ..
-			   p or (q or ..) == p or q or ..
-			   (p) = p */
-			sub = args->value.subargs;
-			for (; sub->next != NULL; sub = sub->next) ;
-			sub->next = args->next;
-			*args = *args->value.subargs;
-			continue;
-		}
-
-		if (args->type == SEARCH_SUB ||
-		    args->type == SEARCH_OR ||
-		    args->type == SEARCH_INTHREAD) {
-			mail_search_args_simplify_sub(box, args->value.subargs,
-						      args->type != SEARCH_OR);
-		}
-
-		/* merge all flags arguments */
-		if (args->type == SEARCH_FLAGS &&
-		    !args->match_not && parent_and) {
-			if (prev_flags_arg == NULL)
-				prev_flags_arg = args;
-			else {
-				prev_flags_arg->value.flags |=
-					args->value.flags;
-				prev->next = args->next;
-				args = args->next;
-				continue;
-			}
-		} else if (args->type == SEARCH_FLAGS && args->match_not &&
-			   !parent_and) {
-			if (prev_not_flags_arg == NULL)
-				prev_not_flags_arg = args;
-			else {
-				prev_not_flags_arg->value.flags |=
-					args->value.flags;
-				prev->next = args->next;
-				args = args->next;
-				continue;
-			}
-		}
-
-		prev = args;
-		args = args->next;
-	}
-}
-
-static bool
-mail_search_args_unnest_inthreads(struct mail_search_args *args,
-				  struct mail_search_arg **argp,
-				  bool parent_inthreads, bool parent_and)
-{
-	struct mail_search_arg *arg, *thread_arg, *or_arg;
-	bool child_inthreads = FALSE, non_inthreads = FALSE;
-
-	for (arg = *argp; arg != NULL; arg = arg->next) {
-		switch (arg->type) {
-		case SEARCH_SUB:
-		case SEARCH_OR:
-			if (!mail_search_args_unnest_inthreads(args,
-					&arg->value.subargs, parent_inthreads,
-					arg->type != SEARCH_OR)) {
-				arg->result = 1;
-				child_inthreads = TRUE;
-			} else {
-				arg->result = 0;
-				non_inthreads = TRUE;
-			}
-			break;
-		case SEARCH_INTHREAD:
-			if (mail_search_args_unnest_inthreads(args,
-					&arg->value.subargs, TRUE, TRUE)) {
-				/* children converted to SEARCH_INTHREADs */
-				arg->type = SEARCH_SUB;
-			}
-			args->have_inthreads = TRUE;
-			arg->result = 1;
-			child_inthreads = TRUE;
-			break;
-		default:
-			arg->result = 0;
-			non_inthreads = TRUE;
-			break;
-		}
-	}
-
-	if (!parent_inthreads || !child_inthreads || !non_inthreads)
-		return FALSE;
-
-	/* put all non-INTHREADs under a single INTHREAD */
-	thread_arg = p_new(args->pool, struct mail_search_arg, 1);
-	thread_arg->type = SEARCH_INTHREAD;
-
-	while (*argp != NULL) {
-		arg = *argp;
-		argp = &(*argp)->next;
-
-		if (arg->result == 0) {
-			/* not an INTHREAD or a SUB/OR with only INTHREADs */
-			arg->next = thread_arg->value.subargs;
-			thread_arg->value.subargs = arg;
-		}
-	}
-	if (!parent_and) {
-		/* We want to OR the args */
-		or_arg = p_new(args->pool, struct mail_search_arg, 1);
-		or_arg->type = SEARCH_OR;
-		or_arg->value.subargs = thread_arg->value.subargs;
-		thread_arg->value.subargs = or_arg;
-	}
-	return TRUE;
-}
-
-void mail_search_args_simplify(struct mail_search_args *args)
-{
-	args->simplified = TRUE;
-
-	mail_search_args_simplify_sub(args->box, args->args, TRUE);
-	if (mail_search_args_unnest_inthreads(args, &args->args,
-					      FALSE, TRUE)) {
-		/* we may have added some extra SUBs that could be dropped */
-		mail_search_args_simplify_sub(args->box, args->args, TRUE);
-	}
-}
-
 static bool mail_search_arg_one_equals(const struct mail_search_arg *arg1,
 				       const struct mail_search_arg *arg2)
 {
@@ -758,6 +602,8 @@ static bool mail_search_arg_one_equals(const struct mail_search_arg *arg1,
 		   never assume they match */
 		return FALSE;
 	case SEARCH_UIDSET:
+		return array_cmp(&arg1->value.seqset, &arg2->value.seqset);
+	case SEARCH_REAL_UID:
 		return array_cmp(&arg1->value.seqset, &arg2->value.seqset);
 
 	case SEARCH_FLAGS:
@@ -801,8 +647,8 @@ static bool mail_search_arg_one_equals(const struct mail_search_arg *arg1,
 			m1->type == m2->type;
 	}
 	case SEARCH_INTHREAD:
-		return mail_search_args_equal(arg1->value.search_args,
-					      arg2->value.search_args);
+		return mail_search_args_equal(arg1->initialized.search_args,
+					      arg2->initialized.search_args);
 	}
 	i_unreached();
 	return FALSE;

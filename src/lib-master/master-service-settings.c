@@ -1,4 +1,4 @@
-/* Copyright (c) 2005-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2005-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "array.h"
@@ -15,7 +15,6 @@
 #include "master-service-settings.h"
 
 #include <stddef.h>
-#include <stdlib.h>
 #include <unistd.h>
 #include <time.h>
 #include <sys/stat.h>
@@ -46,6 +45,9 @@ static const struct setting_define master_service_setting_defines[] = {
 	DEF(SET_BOOL, shutdown_clients),
 	DEF(SET_BOOL, verbose_proctitle),
 
+	DEF(SET_STR, haproxy_trusted_networks),
+	DEF(SET_TIME, haproxy_timeout),
+
 	SETTING_DEFINE_LIST_END
 };
 
@@ -60,7 +62,10 @@ static const struct master_service_settings master_service_default_settings = {
 	.config_cache_size = 1024*1024,
 	.version_ignore = FALSE,
 	.shutdown_clients = TRUE,
-	.verbose_proctitle = FALSE
+	.verbose_proctitle = FALSE,
+
+	.haproxy_trusted_networks = "",
+	.haproxy_timeout = 3
 };
 
 const struct setting_parser_info master_service_setting_parser_info = {
@@ -119,8 +124,10 @@ master_service_exec_config(struct master_service *service,
 	argv_max_count = 11 + (service->argc + 1) + 1;
 	conf_argv = t_new(const char *, argv_max_count);
 	conf_argv[i++] = DOVECOT_CONFIG_BIN_PATH;
-	conf_argv[i++] = "-f";
-	conf_argv[i++] = t_strconcat("service=", service->name, NULL);
+	if (input->service != NULL) {
+		conf_argv[i++] = "-f";
+		conf_argv[i++] = t_strconcat("service=", input->service, NULL);
+	}
 	conf_argv[i++] = "-c";
 	conf_argv[i++] = service->config_path;
 	if (input->module != NULL) {
@@ -177,14 +184,17 @@ master_service_open_config(struct master_service *service,
 	*path_r = path = input->config_path != NULL ? input->config_path :
 		master_service_get_config_path(service);
 
-	if (service->config_fd != -1 && input->config_path == NULL) {
+	if (service->config_fd != -1 && input->config_path == NULL &&
+	    !service->config_path_changed_with_param) {
 		/* use the already opened config socket */
 		fd = service->config_fd;
 		service->config_fd = -1;
 		return fd;
 	}
 
-	if (service->config_path_is_default && input->config_path == NULL) {
+	if (!service->config_path_from_master &&
+	    !service->config_path_changed_with_param &&
+	    input->config_path == NULL) {
 		/* first try to connect to the default config socket.
 		   configuration may contain secrets, so in default config
 		   this fails because the socket is 0600. it's useful for
@@ -344,6 +354,12 @@ void master_service_config_socket_try_open(struct master_service *service)
 	const char *path, *error;
 	int fd;
 
+	/* we'll get here before command line parameters have been parsed,
+	   so -O, -c and -i parameters haven't been handled yet at this point.
+	   this means we could end up opening config socket connection
+	   unnecessarily, but this isn't a problem. we'll just have to
+	   ignore it later on. (unfortunately there isn't a master_service_*()
+	   call where this function would be better called.) */
 	if (getenv("DOVECONF_ENV") != NULL ||
 	    (service->flags & MASTER_SERVICE_FLAG_NO_CONFIG_SETTINGS) != 0)
 		return;
@@ -404,7 +420,7 @@ int master_service_settings_read(struct master_service *service,
 		p_clear(service->set_pool);
 	} else {
 		service->set_pool =
-			pool_alloconly_create("master service settings", 8192);
+			pool_alloconly_create("master service settings", 16384);
 	}
 
 	p_array_init(&all_roots, service->set_pool, 8);

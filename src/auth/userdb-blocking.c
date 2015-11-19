@@ -1,4 +1,4 @@
-/* Copyright (c) 2005-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2005-2015 Dovecot authors, see the included COPYING file */
 
 #include "auth-common.h"
 #include "str.h"
@@ -6,7 +6,6 @@
 #include "userdb.h"
 #include "userdb-blocking.h"
 
-#include <stdlib.h>
 
 struct blocking_userdb_iterate_context {
 	struct userdb_iterate_context ctx;
@@ -57,7 +56,8 @@ void userdb_blocking_lookup(struct auth_request *request)
 	auth_request_export(request, str);
 
 	auth_request_ref(request);
-	auth_worker_call(request->pool, str_c(str), user_callback, request);
+	auth_worker_call(request->pool, request->user,
+			 str_c(str), user_callback, request);
 }
 
 static bool iter_callback(const char *reply, void *context)
@@ -65,9 +65,11 @@ static bool iter_callback(const char *reply, void *context)
 	struct blocking_userdb_iterate_context *ctx = context;
 
 	if (strncmp(reply, "*\t", 2) == 0) {
+		if (ctx->destroyed)
+			return TRUE;
 		ctx->next = FALSE;
 		ctx->ctx.callback(reply + 2, ctx->ctx.context);
-		return ctx->next;
+		return ctx->next || ctx->destroyed;
 	}
 
 	if (strcmp(reply, "OK") != 0)
@@ -95,7 +97,8 @@ userdb_blocking_iter_init(struct auth_request *request,
 	ctx->ctx.context = context;
 
 	auth_request_ref(request);
-	ctx->conn = auth_worker_call(request->pool, str_c(str), iter_callback, ctx);
+	ctx->conn = auth_worker_call(request->pool, "*",
+				     str_c(str), iter_callback, ctx);
 	return &ctx->ctx;
 }
 
@@ -118,5 +121,7 @@ int userdb_blocking_iter_deinit(struct userdb_iterate_context **_ctx)
 
 	/* iter_callback() may still be called */
 	ctx->destroyed = TRUE;
+
+	auth_worker_server_resume_input(ctx->conn);
 	return ret;
 }

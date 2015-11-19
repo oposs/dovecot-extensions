@@ -1,4 +1,4 @@
-/* Copyright (c) 2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2014-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "test-common.h"
@@ -7,7 +7,6 @@
 #include "master-service-settings.h"
 #include "master-service-settings-cache.h"
 
-#include <stdlib.h>
 
 struct master_service *master_service;
 

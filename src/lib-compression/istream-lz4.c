@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2013-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 
@@ -29,7 +29,8 @@ static void i_stream_lz4_close(struct iostream_private *stream,
 {
 	struct lz4_istream *zstream = (struct lz4_istream *)stream;
 
-	buffer_free(&zstream->chunk_buf);
+	if (zstream->chunk_buf != NULL)
+		buffer_free(&zstream->chunk_buf);
 	if (close_parent)
 		i_stream_close(zstream->istream.parent);
 }
@@ -248,8 +249,10 @@ i_stream_lz4_stat(struct istream_private *stream, bool exact)
 	const struct stat *st;
 	size_t size;
 
-	if (i_stream_stat(stream->parent, exact, &st) < 0)
+	if (i_stream_stat(stream->parent, exact, &st) < 0) {
+		stream->istream.stream_errno = stream->parent->stream_errno;
 		return -1;
+	}
 	stream->statbuf = *st;
 
 	/* when exact=FALSE always return the parent stat's size, even if we

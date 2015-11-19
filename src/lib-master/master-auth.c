@@ -1,4 +1,4 @@
-/* Copyright (c) 2005-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2005-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "ioloop.h"
@@ -8,7 +8,6 @@
 #include "master-service-private.h"
 #include "master-auth.h"
 
-#include <stdlib.h>
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -110,7 +109,7 @@ static void master_auth_connection_input(struct master_auth_connection *conn)
 	if (ret <= 0) {
 		if (ret == 0 || errno == ECONNRESET) {
 			i_error("read(%s) failed: Remote closed connection "
-				"(service's process_limit reached?)",
+				"(destination service { process_limit } reached?)",
 				conn->auth->path);
 		} else {
 			if (errno == EAGAIN)
@@ -211,6 +210,7 @@ void master_auth_request(struct master_auth *auth, int fd,
 			       master_auth_connection_timeout, conn);
 	conn->io = io_add(conn->fd, IO_READ,
 			  master_auth_connection_input, conn);
+	i_assert(hash_table_lookup(auth->connections, POINTER_CAST(req.tag)) == NULL);
 	hash_table_insert(auth->connections, POINTER_CAST(req.tag), conn);
 	*tag_r = req.tag;
 }

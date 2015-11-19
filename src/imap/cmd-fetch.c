@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2002-2015 Dovecot authors, see the included COPYING file */
 
 #include "imap-common.h"
 #include "ostream.h"
@@ -8,7 +8,6 @@
 #include "imap-search-args.h"
 #include "mail-search.h"
 
-#include <stdlib.h>
 
 static const char *all_macro[] = {
 	"FLAGS", "INTERNALDATE", "RFC822.SIZE", "ENVELOPE", NULL
@@ -198,8 +197,10 @@ static bool cmd_fetch_finish(struct imap_fetch_context *ctx,
 		}
 
 		errstr = mailbox_get_last_error(cmd->client->mailbox, &error);
-		if (error == MAIL_ERROR_CONVERSION) {
-			/* BINARY found unsupported Content-Transfer-Encoding */
+		if (error == MAIL_ERROR_CONVERSION ||
+		    error == MAIL_ERROR_INVALIDDATA) {
+			/* a) BINARY found unsupported Content-Transfer-Encoding
+			   b) Content was invalid */
 			tagged_reply = t_strdup_printf(
 				"NO ["IMAP_RESP_CODE_UNKNOWN_CTE"] %s", errstr);
 		} else {

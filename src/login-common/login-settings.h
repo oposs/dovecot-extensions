@@ -5,9 +5,11 @@ struct master_service_ssl_settings;
 
 struct login_settings {
 	const char *login_trusted_networks;
+	const char *login_source_ips;
 	const char *login_greeting;
 	const char *login_log_format_elements, *login_log_format;
 	const char *login_access_sockets;
+	unsigned int login_proxy_max_disconnect_delay;
 	const char *director_username_hash;
 
 	const char *ssl_client_cert;

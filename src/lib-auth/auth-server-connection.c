@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2003-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "array.h"
@@ -14,7 +14,6 @@
 #include "auth-server-connection.h"
 
 #include <unistd.h>
-#include <stdlib.h>
 
 #define AUTH_SERVER_CONN_MAX_LINE_LENGTH AUTH_CLIENT_MAX_LINE_LENGTH
 #define AUTH_HANDSHAKE_TIMEOUT (30*1000)
@@ -476,6 +475,7 @@ auth_server_connection_add_request(struct auth_server_connection *conn,
 		/* wrapped - ID 0 not allowed */
 		id = ++conn->client->request_id_counter;
 	}
+	i_assert(hash_table_lookup(conn->requests, POINTER_CAST(id)) == NULL);
 	hash_table_insert(conn->requests, POINTER_CAST(id), request);
 	return id;
 }

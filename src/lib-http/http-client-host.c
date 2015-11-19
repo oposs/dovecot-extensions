@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2013-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "net.h"
@@ -82,11 +82,12 @@ http_client_host_dns_callback(const struct dns_lookup_result *result,
 	/* make connections to requested ports */
 	array_foreach_modifiable(&host->queues, queue_idx) {
 		struct http_client_queue *queue = *queue_idx;
-		unsigned int count = array_count(&queue->request_queue);
+		unsigned int reqs_pending = 
+			http_client_queue_requests_pending(queue, NULL);
 		queue->ips_connect_idx = queue->ips_connect_start_idx = 0;
-		if (count > 0)
+		if (reqs_pending > 0)
 			http_client_queue_connection_setup(queue);
-		requests += count;
+		requests += reqs_pending;
 	}
 
 	if (requests == 0 && host->client->ioloop != NULL)
@@ -136,32 +137,55 @@ static void http_client_host_lookup
 	}
 }
 
+static struct http_client_host *http_client_host_create
+(struct http_client *client)
+{
+	struct http_client_host *host;
+
+	// FIXME: limit the maximum number of inactive cached hosts
+	host = i_new(struct http_client_host, 1);
+	host->client = client;
+	i_array_init(&host->queues, 4);
+	DLLIST_PREPEND(&client->hosts_list, host);
+
+	return host;
+}
+
 struct http_client_host *http_client_host_get
 (struct http_client *client, const struct http_url *host_url)
 {
 	struct http_client_host *host;
-	const char *hostname = host_url->host_name;
 
-	host = hash_table_lookup(client->hosts, hostname);
-	if (host == NULL) {
-		// FIXME: limit the maximum number of inactive cached hosts
-		host = i_new(struct http_client_host, 1);
-		host->client = client;
-		host->name = i_strdup(hostname);
-		i_array_init(&host->queues, 4);
-		i_array_init(&host->delayed_failing_requests, 1);
+	if (host_url == NULL) {
+		host = client->unix_host;
+		if (host == NULL) {
+			host = http_client_host_create(client);
+			host->name = i_strdup("[unix]");
+			host->unix_local = TRUE;
 
-		hostname = host->name;
-		hash_table_insert(client->hosts, hostname, host);
-		DLLIST_PREPEND(&client->hosts_list, host);
+			client->unix_host = host;
 
-		if (host_url->have_host_ip) {
-			host->ips_count = 1;
-			host->ips = i_new(struct ip_addr, host->ips_count);
-			host->ips[0] = host_url->host_ip;
+			http_client_host_debug(host, "Unix host created");
 		}
 
-		http_client_host_debug(host, "Host created");
+	} else {
+		const char *hostname = host_url->host_name;
+
+		host = hash_table_lookup(client->hosts, hostname);
+		if (host == NULL) {
+			host = http_client_host_create(client);
+			host->name = i_strdup(hostname);
+			hostname = host->name;
+			hash_table_insert(client->hosts, hostname, host);
+
+			if (host_url->have_host_ip) {
+				host->ips_count = 1;
+				host->ips = i_new(struct ip_addr, host->ips_count);
+				host->ips[0] = host_url->host_ip;
+			}
+
+			http_client_host_debug(host, "Host created");
+		}
 	}
 	return host;
 }
@@ -170,13 +194,14 @@ void http_client_host_submit_request(struct http_client_host *host,
 	struct http_client_request *req)
 {
 	struct http_client_queue *queue;
-	const struct http_url *host_url = req->host_url;
 	struct http_client_peer_addr addr;
 	const char *error;
 
 	req->host = host;
 
-	if (host_url->have_ssl && host->client->ssl_ctx == NULL) {
+	http_client_request_get_peer_addr(req, &addr);
+	if (http_client_peer_addr_is_https(&addr) &&
+		host->client->ssl_ctx == NULL) {
 		if (http_client_init_ssl_ctx(host->client, &error) < 0) {
 			http_client_request_error(req,
 				HTTP_CLIENT_REQUEST_ERROR_CONNECT_FAILED, error);
@@ -184,11 +209,14 @@ void http_client_host_submit_request(struct http_client_host *host,
 		}
 	}
 
-	http_client_request_get_peer_addr(req, &addr);
-
 	/* add request to queue (grouped by tcp port) */
 	queue = http_client_queue_create(host, &addr);
 	http_client_queue_submit_request(queue, req);
+
+	if (host->unix_local) {
+		http_client_queue_connection_setup(queue);
+		return;
+	}
 
 	/* start DNS lookup if necessary */
 	if (host->ips_count == 0 && host->dns_lookup == NULL)	
@@ -205,13 +233,13 @@ void http_client_host_free(struct http_client_host **_host)
 {
 	struct http_client_host *host = *_host;
 	struct http_client_queue *const *queue_idx;
-	struct http_client_request *req, *const *req_idx;
 	const char *hostname = host->name;
 
 	http_client_host_debug(host, "Host destroy");
 
 	DLLIST_REMOVE(&host->client->hosts_list, host);
-	hash_table_remove(host->client->hosts, hostname);
+	if (host != host->client->unix_host)
+		hash_table_remove(host->client->hosts, hostname);
 
 	if (host->dns_lookup != NULL)
 		dns_lookup_abort(&host->dns_lookup);
@@ -222,74 +250,17 @@ void http_client_host_free(struct http_client_host **_host)
 	}
 	array_free(&host->queues);
 
-	while (array_count(&host->delayed_failing_requests) > 0) {
-		req_idx = array_idx(&host->delayed_failing_requests, 0);
-		req = *req_idx;
-
-		i_assert(req->refcount == 1);
-		http_client_request_error_delayed(&req);
-	}
-	array_free(&host->delayed_failing_requests);
-
-	if (host->to_failing_requests != NULL)
-		timeout_remove(&host->to_failing_requests);
-
 	i_free(host->ips);
 	i_free(host->name);
 	i_free(host);
-}
-
-static void
-http_client_host_handle_request_errors(struct http_client_host *host)
-{		
-	timeout_remove(&host->to_failing_requests);
-
-	while (array_count(&host->delayed_failing_requests) > 0) {
-		struct http_client_request *const *req_idx =
-			array_idx(&host->delayed_failing_requests, 0);
-		struct http_client_request *req = *req_idx;
-
-		i_assert(req->refcount == 1);
-		http_client_request_error_delayed(&req);
-	}
-	array_clear(&host->delayed_failing_requests);
-}
-
-void http_client_host_delay_request_error(struct http_client_host *host,
-	struct http_client_request *req)
-{
-	if (host->to_failing_requests == NULL) {
-		host->to_failing_requests = timeout_add_short(0,
-			http_client_host_handle_request_errors, host);
-	}
-	array_append(&host->delayed_failing_requests, &req, 1);
-}
-
-void http_client_host_remove_request_error(struct http_client_host *host,
-	struct http_client_request *req)
-{
-	struct http_client_request *const *reqs;
-	unsigned int i, count;
-
-	reqs = array_get(&host->delayed_failing_requests, &count);
-	for (i = 0; i < count; i++) {
-		if (reqs[i] == req) {
-			array_delete(&host->delayed_failing_requests, i, 1);
-			return;
-		}
-	}
 }
 
 void http_client_host_switch_ioloop(struct http_client_host *host)
 {
 	struct http_client_queue *const *queue_idx;
 
-	if (host->dns_lookup != NULL)
+	if (host->dns_lookup != NULL && host->client->set.dns_client == NULL)
 		dns_lookup_switch_ioloop(host->dns_lookup);
 	array_foreach(&host->queues, queue_idx)
 		http_client_queue_switch_ioloop(*queue_idx);
-	if (host->to_failing_requests != NULL) {
-		host->to_failing_requests =
-			io_loop_move_timeout(&host->to_failing_requests);
-	}
 }

@@ -13,11 +13,14 @@ struct imapc_mail {
 	enum mail_fetch_field fetching_fields;
 	const char *const *fetching_headers;
 	unsigned int fetch_count;
+	bool fetch_sent;
 
 	int fd;
 	buffer_t *body;
+	bool header_fetched;
 	bool body_fetched;
 	bool header_list_fetched;
+	bool fetch_failed;
 };
 
 extern struct mail_vfuncs imapc_mail_vfuncs;
@@ -30,7 +33,7 @@ int imapc_mail_fetch(struct mail *mail, enum mail_fetch_field fields,
 		     const char *const *headers);
 bool imapc_mail_prefetch(struct mail *mail);
 void imapc_mail_fetch_flush(struct imapc_mailbox *mbox);
-void imapc_mail_init_stream(struct imapc_mail *mail, bool have_body);
+void imapc_mail_init_stream(struct imapc_mail *mail);
 
 void imapc_mail_fetch_update(struct imapc_mail *mail,
 			     const struct imapc_untagged_reply *reply,

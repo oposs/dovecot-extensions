@@ -1,4 +1,4 @@
-/* Copyright (c) 2004-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2004-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "array.h"
@@ -10,7 +10,6 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <unistd.h>
 
 #define DEFAULT_SCHEME "CRAM-MD5"

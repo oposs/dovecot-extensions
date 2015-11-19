@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2010-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "buffer.h"
@@ -17,7 +17,7 @@ static struct file_listener_settings *doveadm_unix_listeners[] = {
 	&doveadm_unix_listeners_array[0]
 };
 static buffer_t doveadm_unix_listeners_buf = {
-	doveadm_unix_listeners, sizeof(doveadm_unix_listeners), { 0, }
+	doveadm_unix_listeners, sizeof(doveadm_unix_listeners), { NULL, }
 };
 /* </settings checks> */
 
@@ -59,14 +59,16 @@ static const struct setting_define doveadm_setting_defines[] = {
 	DEF(SET_STR, auth_socket_path),
 	DEF(SET_STR, doveadm_socket_path),
 	DEF(SET_UINT, doveadm_worker_count),
-	DEF(SET_UINT, doveadm_port),
+	DEF(SET_IN_PORT, doveadm_port),
 	{ SET_ALIAS, "doveadm_proxy_port", 0, NULL },
+	DEF(SET_STR, doveadm_username),
 	DEF(SET_STR, doveadm_password),
 	DEF(SET_STR, doveadm_allowed_commands),
 	DEF(SET_STR, dsync_alt_char),
 	DEF(SET_STR, dsync_remote_cmd),
 	DEF(SET_STR, ssl_client_ca_dir),
 	DEF(SET_STR, ssl_client_ca_file),
+	DEF(SET_STR, director_username_hash),
 
 	{ SET_STRLIST, "plugin", offsetof(struct doveadm_settings, plugin_envs), NULL },
 
@@ -82,12 +84,14 @@ const struct doveadm_settings doveadm_default_settings = {
 	.doveadm_socket_path = "doveadm-server",
 	.doveadm_worker_count = 0,
 	.doveadm_port = 0,
+	.doveadm_username = "doveadm",
 	.doveadm_password = "",
 	.doveadm_allowed_commands = "",
 	.dsync_alt_char = "_",
 	.dsync_remote_cmd = "ssh -l%{login} %{host} doveadm dsync-server -u%u -U",
 	.ssl_client_ca_dir = "",
 	.ssl_client_ca_file = "",
+	.director_username_hash = "%Lu",
 
 	.plugin_envs = ARRAY_INIT
 };

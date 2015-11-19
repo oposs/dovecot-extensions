@@ -1,4 +1,4 @@
-/* Copyright (c) 2007-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2007-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "array.h"
@@ -11,7 +11,6 @@
 #include "mdbox-file.h"
 #include "mdbox-map-private.h"
 
-#include <stdlib.h>
 #include <dirent.h>
 
 #define MAX_BACKWARDS_LOOKUPS 10
@@ -497,7 +496,8 @@ int mdbox_map_atomic_lock(struct mdbox_map_atomic_context *atomic)
 	/* use syncing to lock the transaction log, so that we always see
 	   log's head_offset = tail_offset */
 	ret = mail_index_sync_begin(atomic->map->index, &atomic->sync_ctx,
-				    &atomic->sync_view, &atomic->sync_trans, 0);
+				    &atomic->sync_view, &atomic->sync_trans,
+				    MAIL_INDEX_SYNC_FLAG_UPDATE_TAIL_OFFSET);
 	if (mail_index_reset_fscked(atomic->map->index))
 		mdbox_storage_set_corrupted(atomic->map->storage);
 	if (ret <= 0) {
@@ -908,9 +908,6 @@ mdbox_map_find_existing_append(struct mdbox_map_append_context *ctx,
 	struct mdbox_file *mfile;
 	unsigned int i, count;
 	uoff_t append_offset;
-
-	if (mail_size >= map->set->mdbox_rotate_size)
-		return NULL;
 
 	/* first try to use files already used in this append */
 	file_appends = array_get(&ctx->file_appends, &count);

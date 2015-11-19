@@ -1,4 +1,4 @@
-/* Copyright (c) 2007-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2007-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "ioloop.h"
@@ -9,7 +9,6 @@
 #include "sdbox-storage.h"
 #include "sdbox-file.h"
 
-#include <stdlib.h>
 #include <sys/stat.h>
 
 static void sdbox_mail_set_expunged(struct dbox_mail *mail)

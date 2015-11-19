@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2002-2015 Dovecot authors, see the included COPYING file */
 
 /* Thanks to Courier-IMAP for showing how the vpopmail API should be used */
 
@@ -13,7 +13,6 @@
 
 #include "userdb-vpopmail.h"
 
-#include <stdlib.h>
 
 #define VPOPMAIL_DEFAULT_PASS_SCHEME "CRYPT"
 
@@ -69,7 +68,7 @@ vpopmail_password_lookup(struct auth_request *auth_request, bool *cleartext,
 	}
 
 	if (vpopmail_is_disabled(auth_request, vpw)) {
-		auth_request_log_info(auth_request, "vpopmail",
+		auth_request_log_info(auth_request, AUTH_SUBSYS_DB,
 				      "%s disabled in vpopmail for this user",
 				      auth_request->service);
 		password = NULL;
@@ -139,8 +138,8 @@ vpopmail_verify_plain(struct auth_request *request, const char *password,
 			scheme = request->passdb->passdb->default_pass_scheme;
 	}
 
-	ret = auth_request_password_verify(request, password,
-					   tmp_pass, scheme, "vpopmail");
+	ret = auth_request_password_verify(request, password, tmp_pass,
+					   scheme, AUTH_SUBSYS_DB);
 	safe_memset(crypted_pass, 0, strlen(crypted_pass));
 
 	if (ret <= 0) {

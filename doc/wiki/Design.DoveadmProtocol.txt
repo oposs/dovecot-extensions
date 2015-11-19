@@ -21,11 +21,11 @@ Authentication
 --------------
 
 The authentication is done with a regular SASL PLAIN authentication, i.e.
-"PLAIN<tab>base64(\0user\0password)". For example for user=tss, password=secret
-use:
+"PLAIN<tab>base64(\0username\0password)". Currently the username must be
+"doveadm". For example for user=doveadm, password=secret use:
 
 ---%<-------------------------------------------------------------------------
-C: PLAIN        AHRzcwBzZWNyZXQ=
+C: PLAIN        AGRvdmVhZG0Ac2VjcmV0
 S: +
 ---%<-------------------------------------------------------------------------
 
@@ -84,4 +84,4 @@ line. So in the above case the protocol output will be:
 fa8cb722dfad9c52b62600007049b30b<tab>125159<tab>fa8cb722dfad9c52b62600007049b30b<tab>125160
 ---%<-------------------------------------------------------------------------
 
-(This file was created from the wiki on 2014-02-11 22:29)
+(This file was created from the wiki on 2015-10-02 04:47)

@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2009-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "net.h"
@@ -15,7 +15,6 @@
 #include "master-auth.h"
 #include "master-login-auth.h"
 
-#include <stdlib.h>
 
 #define AUTH_MAX_INBUF_SIZE 8192
 
@@ -483,6 +482,7 @@ void master_login_auth_request(struct master_login_auth *auth,
 	memcpy(login_req->cookie, req->cookie, sizeof(login_req->cookie));
 	login_req->callback = callback;
 	login_req->context = context;
+	i_assert(hash_table_lookup(auth->requests, POINTER_CAST(id)) == NULL);
 	hash_table_insert(auth->requests, POINTER_CAST(id), login_req);
 	DLLIST2_APPEND(&auth->request_head, &auth->request_tail, login_req);
 

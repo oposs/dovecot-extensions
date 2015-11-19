@@ -1,4 +1,4 @@
-/* Copyright (c) 2004-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2004-2015 Dovecot authors, see the included COPYING file */
 
 #include "login-common.h"
 #include "array.h"
@@ -16,7 +16,6 @@
 #include "imap-quote.h"
 #include "imap-proxy.h"
 
-#include <stdlib.h>
 
 enum imap_proxy_state {
 	IMAP_PROXY_STATE_NONE,

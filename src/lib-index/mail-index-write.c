@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2003-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "read-full.h"
@@ -68,7 +68,7 @@ static int mail_index_recreate(struct mail_index *index)
 	i_assert(!MAIL_INDEX_IS_IN_MEMORY(index));
 	i_assert(map->hdr.indexid == index->indexid);
 
-	fd = mail_index_create_tmp_file(index, &path);
+	fd = mail_index_create_tmp_file(index, index->filepath, &path);
 	if (fd == -1)
 		return -1;
 
@@ -110,12 +110,8 @@ static int mail_index_recreate(struct mail_index *index)
 		ret = -1;
 	}
 
-	if (ret < 0) {
-		if (unlink(path) < 0) {
-			mail_index_set_error(index, "unlink(%s) failed: %m",
-					     path);
-		}
-	}
+	if (ret < 0)
+		i_unlink(path);
 	return ret;
 }
 

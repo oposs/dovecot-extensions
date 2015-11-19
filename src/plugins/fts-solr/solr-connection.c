@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2006-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "array.h"
@@ -128,6 +128,8 @@ int solr_connection_init(const char *url, bool debug,
 		http_set.max_redirects = 1;
 		http_set.max_attempts = 3;
 		http_set.debug = debug;
+		http_set.connect_timeout_msecs = 5*1000;
+		http_set.request_timeout_msecs = 60*1000;
 		solr_http_client = http_client_init(&http_set);
 	}
 
@@ -140,8 +142,11 @@ int solr_connection_init(const char *url, bool debug,
 	return 0;
 }
 
-void solr_connection_deinit(struct solr_connection *conn)
+void solr_connection_deinit(struct solr_connection **_conn)
 {
+	struct solr_connection *conn = *_conn;
+
+	*_conn = NULL;
 	XML_ParserFree(conn->xml_parser);
 	i_free(conn->http_host);
 	i_free(conn->http_base_url);
@@ -260,8 +265,9 @@ static void solr_lookup_add_doc(struct solr_lookup_xml_context *ctx)
 	}
 	result = solr_result_get(ctx, box_id);
 
-	seq_range_array_add(&result->uids, ctx->uid);
-	if (ctx->score != 0) {
+	if (seq_range_array_add(&result->uids, ctx->uid)) {
+		/* duplicate result */
+	} else if (ctx->score != 0) {
 		score = array_append_space(&result->scores);
 		score->uid = ctx->uid;
 		score->score = ctx->score;
@@ -377,7 +383,8 @@ solr_connection_select_response(const struct http_response *response,
 				struct solr_connection *conn)
 {
 	if (response->status / 100 != 2) {
-		i_error("fts_solr: Lookup failed: %s", response->reason);
+		i_error("fts_solr: Lookup failed: %u %s",
+			response->status, response->reason);
 		conn->request_status = -1;
 		return;
 	}
@@ -390,8 +397,8 @@ solr_connection_select_response(const struct http_response *response,
 
 	i_stream_ref(response->payload);
 	conn->payload = response->payload;
-	conn->io = io_add(i_stream_get_fd(response->payload), IO_READ,
-			  solr_connection_payload_input, conn);
+	conn->io = io_add_istream(response->payload,
+				  solr_connection_payload_input, conn);
 	solr_connection_payload_input(conn);
 }
 
@@ -402,8 +409,6 @@ int solr_connection_select(struct solr_connection *conn, const char *query,
 	struct http_client_request *http_req;
 	const char *url;
 	int parse_ret;
-
-	i_assert(!conn->posting);
 
 	memset(&solr_lookup_context, 0, sizeof(solr_lookup_context));
 	solr_lookup_context.result_pool = pool;
@@ -426,7 +431,6 @@ int solr_connection_select(struct solr_connection *conn, const char *query,
 				       solr_connection_select_response, conn);
 	http_client_request_set_port(http_req, conn->http_port);
 	http_client_request_set_ssl(http_req, conn->http_ssl);
-	http_client_request_add_header(http_req, "Content-Type", "text/xml");
 	http_client_request_submit(http_req);
 
 	conn->request_status = 0;
@@ -447,17 +451,10 @@ static void
 solr_connection_update_response(const struct http_response *response,
 				struct solr_connection *conn)
 {
-	if (response == NULL) {
-		/* request failed */
-		i_error("fts_solr: HTTP POST request failed");
-		conn->request_status = -1;
-		return;
-	}
-
 	if (response->status / 100 != 2) {
-		i_error("fts_solr: Indexing failed: %s", response->reason);
+		i_error("fts_solr: Indexing failed: %u %s",
+			response->status, response->reason);
 		conn->request_status = -1;
-		return;
 	}
 }
 
@@ -502,17 +499,21 @@ void solr_connection_post_more(struct solr_connection_post *post,
 	if (post->failed)
 		return;
 
-	if (http_client_request_send_payload(&post->http_req, data, size) != 0 &&
-	    conn->request_status < 0)
+	if (conn->request_status == 0)
+		(void)http_client_request_send_payload(&post->http_req, data, size);
+	if (conn->request_status < 0)
 		post->failed = TRUE;
 }
 
-int solr_connection_post_end(struct solr_connection_post *post)
+int solr_connection_post_end(struct solr_connection_post **_post)
 {
+	struct solr_connection_post *post = *_post;
 	struct solr_connection *conn = post->conn;
 	int ret = post->failed ? -1 : 0;
 
 	i_assert(conn->posting);
+
+	*_post = NULL;
 
 	if (!post->failed) {
 		if (http_client_request_finish_payload(&post->http_req) <= 0 ||

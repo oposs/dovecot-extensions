@@ -105,10 +105,10 @@ Problems
 --------
 
  * POP3 message order (when it's different from IMAP message order) is
-   currently preserved only when destination is Maildir
+   currently preserved only when destination is Maildir, sdbox or mdbox.
  * If source POP3 server merges multiple IMAP mailboxes into one POP3 INBOX,
    the migration won't be transparent.
  * If source IMAP and POP3 servers return messages somehow differently,
    pop3-migration plugin might not be able to match the messages
 
-(This file was created from the wiki on 2014-02-11 22:29)
+(This file was created from the wiki on 2015-10-02 04:47)

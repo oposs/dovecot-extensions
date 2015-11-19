@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2002-2015 Dovecot authors, see the included COPYING file */
 
 /* @UNSAFE: whole file */
 
@@ -41,6 +41,15 @@ char *p_strdup(pool_t pool, const char *str)
 	len = strlen(str) + 1;
 	mem = p_malloc(pool, len);
 	memcpy(mem, str, len);
+	return mem;
+}
+
+void *p_memdup(pool_t pool, const void *data, size_t size)
+{
+	void *mem;
+
+	mem = p_malloc(pool, size);
+	memcpy(mem, data, size);
 	return mem;
 }
 
@@ -106,6 +115,9 @@ char *t_noalloc_strdup_vprintf(const char *format, va_list args,
 	char *tmp;
 	unsigned int init_size;
 	int ret;
+#ifdef DEBUG
+	int old_errno = errno;
+#endif
 
 	VA_COPY(args2, args);
 
@@ -127,6 +139,11 @@ char *t_noalloc_strdup_vprintf(const char *format, va_list args,
 		ret = vsnprintf(tmp, *size_r, format, args2);
 		i_assert((unsigned int)ret == *size_r-1);
 	}
+#ifdef DEBUG
+	/* we rely on errno not changing. it shouldn't. */
+	i_assert(errno == old_errno);
+#endif
+	va_end(args2);
 	return tmp;
 }
 
@@ -281,6 +298,26 @@ const char *t_strcut(const char *str, char cutchar)
         return str;
 }
 
+const char *t_str_replace(const char *str, char from, char to)
+{
+	char *out;
+	unsigned int i, len;
+
+	if (strchr(str, from) == NULL)
+		return str;
+
+	len = strlen(str);
+	out = t_malloc(len + 1);
+	for (i = 0; i < len; i++) {
+		if (str[i] == from)
+			out[i] = to;
+		else
+			out[i] = str[i];
+	}
+	out[i] = '\0';
+	return out;
+}
+
 int i_strocpy(char *dest, const char *src, size_t dstsize)
 {
 	if (dstsize == 0)
@@ -359,9 +396,9 @@ int bsearch_strcmp(const char *key, const char *const *member)
 	return strcmp(key, *member);
 }
 
-int i_strcmp_p(const char *const *s1, const char *const *s2)
+int i_strcmp_p(const char *const *p1, const char *const *p2)
 {
-	return strcmp(*s1, *s2);
+	return strcmp(*p1, *p2);
 }
 
 int bsearch_strcasecmp(const char *key, const char *const *member)
@@ -369,9 +406,9 @@ int bsearch_strcasecmp(const char *key, const char *const *member)
 	return strcasecmp(key, *member);
 }
 
-int i_strcasecmp_p(const char *const *s1, const char *const *s2)
+int i_strcasecmp_p(const char *const *p1, const char *const *p2)
 {
-	return strcasecmp(*s1, *s2);
+	return strcasecmp(*p1, *p2);
 }
 
 static char **

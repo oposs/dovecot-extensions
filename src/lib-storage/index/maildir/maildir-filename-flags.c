@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2002-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "array.h"
@@ -7,7 +7,6 @@
 #include "maildir-keywords.h"
 #include "maildir-filename-flags.h"
 
-#include <stdlib.h>
 
 void maildir_filename_flags_get(struct maildir_keywords_sync_ctx *ctx,
 				const char *fname, enum mail_flags *flags_r,
