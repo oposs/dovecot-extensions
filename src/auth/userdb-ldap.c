@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2003-2015 Dovecot authors, see the included COPYING file */
 
 #include "auth-common.h"
 #include "userdb.h"
@@ -8,12 +8,10 @@
 #include "ioloop.h"
 #include "array.h"
 #include "str.h"
-#include "var-expand.h"
 #include "auth-cache.h"
 #include "db-ldap.h"
 
 #include <ldap.h>
-#include <stdlib.h>
 
 struct ldap_userdb_module {
 	struct userdb_module module;
@@ -69,9 +67,9 @@ userdb_ldap_lookup_finish(struct auth_request *auth_request,
 		result = USERDB_RESULT_INTERNAL_FAILURE;
 	} else if (urequest->entries == 0) {
 		result = USERDB_RESULT_USER_UNKNOWN;
-		auth_request_log_unknown_user(auth_request, "ldap");
+		auth_request_log_unknown_user(auth_request, AUTH_SUBSYS_DB);
 	} else if (urequest->entries > 1) {
-		auth_request_log_error(auth_request, "ldap",
+		auth_request_log_error(auth_request, AUTH_SUBSYS_DB,
 			"user_filter matched multiple objects, aborting");
 		result = USERDB_RESULT_INTERNAL_FAILURE;
 	} else {
@@ -110,7 +108,6 @@ static void userdb_ldap_lookup(struct auth_request *auth_request,
 	struct ldap_userdb_module *module =
 		(struct ldap_userdb_module *)_module;
 	struct ldap_connection *conn = module->conn;
-        const struct var_expand_table *vars;
 	const char **attr_names = (const char **)conn->user_attr_names;
 	struct userdb_ldap_request *request;
 	string_t *str;
@@ -119,20 +116,18 @@ static void userdb_ldap_lookup(struct auth_request *auth_request,
 	request = p_new(auth_request->pool, struct userdb_ldap_request, 1);
 	request->userdb_callback = callback;
 
-	vars = auth_request_get_var_expand_table(auth_request, ldap_escape);
-
 	str = t_str_new(512);
-	var_expand(str, conn->set.base, vars);
+	auth_request_var_expand(str, conn->set.base, auth_request, ldap_escape);
 	request->request.base = p_strdup(auth_request->pool, str_c(str));
 
 	str_truncate(str, 0);
-	var_expand(str, conn->set.user_filter, vars);
+	auth_request_var_expand(str, conn->set.user_filter, auth_request, ldap_escape);
 	request->request.filter = p_strdup(auth_request->pool, str_c(str));
 
 	request->request.attr_map = &conn->user_attr_map;
 	request->request.attributes = conn->user_attr_names;
 
-	auth_request_log_debug(auth_request, "ldap", "user search: "
+	auth_request_log_debug(auth_request, AUTH_SUBSYS_DB, "user search: "
 			       "base=%s scope=%s filter=%s fields=%s",
 			       request->request.base, conn->set.scope,
 			       request->request.filter,
@@ -195,7 +190,6 @@ userdb_ldap_iterate_init(struct auth_request *auth_request,
 	struct ldap_connection *conn = module->conn;
 	struct ldap_userdb_iterate_context *ctx;
 	struct userdb_iter_ldap_request *request;
-        const struct var_expand_table *vars;
 	const char **attr_names = (const char **)conn->iterate_attr_names;
 	string_t *str;
 
@@ -210,14 +204,13 @@ userdb_ldap_iterate_init(struct auth_request *auth_request,
 	auth_request_ref(auth_request);
 	request->request.request.auth_request = auth_request;
 
-	vars = auth_request_get_var_expand_table(auth_request, ldap_escape);
-
 	str = t_str_new(512);
-	var_expand(str, conn->set.base, vars);
+	auth_request_var_expand(str, conn->set.base, auth_request, ldap_escape);
 	request->request.base = p_strdup(auth_request->pool, str_c(str));
 
 	str_truncate(str, 0);
-	var_expand(str, conn->set.iterate_filter, vars);
+	auth_request_var_expand(str, conn->set.iterate_filter,
+				auth_request, ldap_escape);
 	request->request.filter = p_strdup(auth_request->pool, str_c(str));
 	request->request.attr_map = &conn->iterate_attr_map;
 	request->request.attributes = conn->iterate_attr_names;
@@ -285,7 +278,7 @@ static void userdb_ldap_init(struct userdb_module *_module)
 	struct ldap_userdb_module *module =
 		(struct ldap_userdb_module *)_module;
 
-	(void)db_ldap_connect(module->conn);
+	db_ldap_connect_delayed(module->conn);
 }
 
 static void userdb_ldap_deinit(struct userdb_module *_module)

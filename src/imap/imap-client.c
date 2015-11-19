@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2002-2015 Dovecot authors, see the included COPYING file */
 
 #include "imap-common.h"
 #include "ioloop.h"
@@ -6,6 +6,7 @@
 #include "str.h"
 #include "hostpid.h"
 #include "net.h"
+#include "iostream.h"
 #include "istream.h"
 #include "ostream.h"
 #include "time-util.h"
@@ -17,11 +18,11 @@
 #include "mail-error.h"
 #include "mail-namespace.h"
 #include "mail-storage-service.h"
+#include "imap-state.h"
 #include "imap-search.h"
 #include "imap-notify.h"
 #include "imap-commands.h"
 
-#include <stdlib.h>
 #include <unistd.h>
 
 extern struct mail_storage_callbacks mail_storage_callbacks;
@@ -53,6 +54,17 @@ static void client_init_urlauth(struct client *client)
 	config.access_user = client->user->username;
 
 	client->urlauth_ctx = imap_urlauth_init(client->user, &config);
+}
+
+static bool user_has_special_use_mailboxes(struct mail_user *user)
+{
+	struct mail_namespace *ns;
+
+	for (ns = user->namespaces; ns != NULL; ns = ns->next) {
+		if (ns->special_use_mailboxes)
+			return TRUE;
+	}
+	return FALSE;
 }
 
 struct client *client_create(int fd_in, int fd_out, const char *session_id,
@@ -89,7 +101,7 @@ struct client *client_create(int fd_in, int fd_out, const char *session_id,
 	o_stream_set_flush_callback(client->output, client_output, client);
 
 	p_array_init(&client->module_contexts, client->pool, 5);
-	client->io = io_add(fd_in, IO_READ, client_input, client);
+	client->io = io_add_istream(client->input, client_input, client);
         client->last_input = ioloop_time;
 	client->to_idle = timeout_add(CLIENT_IDLE_TIMEOUT_MSECS,
 				      client_idle_timeout, client);
@@ -108,10 +120,10 @@ struct client *client_create(int fd_in, int fd_out, const char *session_id,
 
 	if (*set->imap_capability == '\0')
 		str_append(client->capability_string, CAPABILITY_STRING);
-	else if (*set->imap_capability != '+')
-		str_append(client->capability_string, set->imap_capability);
-	else {
+	else if (*set->imap_capability != '+') {
 		explicit_capability = TRUE;
+		str_append(client->capability_string, set->imap_capability);
+	} else {
 		str_append(client->capability_string, CAPABILITY_STRING);
 		str_append_c(client->capability_string, ' ');
 		str_append(client->capability_string, set->imap_capability + 1);
@@ -138,10 +150,15 @@ struct client *client_create(int fd_in, int fd_out, const char *session_id,
 		if (!explicit_capability)
 			str_append(client->capability_string, " URLAUTH URLAUTH=BINARY");
 	}
-	if (set->imap_metadata && *mail_set->mail_attribute_dict != '\0' &&
-	    !explicit_capability) {
+	if (set->imap_metadata && *mail_set->mail_attribute_dict != '\0') {
 		client->imap_metadata_enabled = TRUE;
-		str_append(client->capability_string, " METADATA");
+		if (!explicit_capability)
+			str_append(client->capability_string, " METADATA");
+	}
+	if (!explicit_capability && user_has_special_use_mailboxes(user)) {
+		/* Advertise SPECIAL-USE only if there are actually some
+		   SPECIAL-USE flags in mailbox configuration. */
+		str_append(client->capability_string, " SPECIAL-USE");
 	}
 
 	ident = mail_user_get_anvil_userip_ident(client->user);
@@ -187,7 +204,7 @@ void client_command_cancel(struct client_command_context **_cmd)
 
 	cmd_ret = !cmd->cancel || cmd->func == NULL ? TRUE :
 		command_exec(cmd);
-	if (!cmd_ret && cmd->state != CLIENT_COMMAND_STATE_DONE) {
+	if (!cmd_ret) {
 		if (cmd->client->output->closed)
 			i_panic("command didn't cancel itself: %s", cmd->name);
 	} else {
@@ -195,12 +212,19 @@ void client_command_cancel(struct client_command_context **_cmd)
 	}
 }
 
-static const char *client_stats(struct client *client)
+const char *client_stats(struct client *client)
 {
 	static struct var_expand_table static_tab[] = {
 		{ 'i', NULL, "input" },
 		{ 'o', NULL, "output" },
 		{ '\0', NULL, "session" },
+		{ '\0', NULL, "fetch_hdr_count" },
+		{ '\0', NULL, "fetch_hdr_bytes" },
+		{ '\0', NULL, "fetch_body_count" },
+		{ '\0', NULL, "fetch_body_bytes" },
+		{ '\0', NULL, "deleted" },
+		{ '\0', NULL, "expunged" },
+		{ '\0', NULL, "trashed" },
 		{ '\0', NULL, NULL }
 	};
 	struct var_expand_table *tab;
@@ -212,19 +236,17 @@ static const char *client_stats(struct client *client)
 	tab[0].value = dec2str(i_stream_get_absolute_offset(client->input));
 	tab[1].value = dec2str(client->output->offset);
 	tab[2].value = client->session_id;
+	tab[3].value = dec2str(client->fetch_hdr_count);
+	tab[4].value = dec2str(client->fetch_hdr_bytes);
+	tab[5].value = dec2str(client->fetch_body_count);
+	tab[6].value = dec2str(client->fetch_body_bytes);
+	tab[7].value = dec2str(client->deleted_count);
+	tab[8].value = dec2str(client->expunged_count);
+	tab[9].value = dec2str(client->trashed_count);
 
 	str = t_str_new(128);
 	var_expand(str, client->set->imap_logout_format, tab);
 	return str_c(str);
-}
-
-static const char *client_get_disconnect_reason(struct client *client)
-{
-	errno = client->input->stream_errno != 0 ?
-		client->input->stream_errno :
-		client->output->stream_errno;
-	return errno == 0 || errno == EPIPE ? "Connection closed" :
-		t_strdup_printf("Connection closed: %m");
 }
 
 void client_destroy(struct client *client, const char *reason)
@@ -232,22 +254,58 @@ void client_destroy(struct client *client, const char *reason)
 	client->v.destroy(client, reason);
 }
 
+static const char *client_get_commands_status(struct client *client)
+{
+	struct client_command_context *cmd;
+	unsigned int msecs_in_ioloop;
+	uint64_t running_usecs = 0, ioloop_wait_usecs;
+	unsigned long long bytes_in = 0, bytes_out = 0;
+	string_t *str;
+
+	if (client->command_queue == NULL)
+		return "";
+
+	str = t_str_new(128);
+	str_append(str, " (");
+	for (cmd = client->command_queue; cmd != NULL; cmd = cmd->next) {
+		str_append(str, cmd->name);
+		if (cmd->next != NULL)
+			str_append_c(str, ',');
+		running_usecs += cmd->running_usecs;
+		bytes_in += cmd->bytes_in;
+		bytes_out += cmd->bytes_out;
+	}
+
+	ioloop_wait_usecs = io_loop_get_wait_usecs(current_ioloop);
+	msecs_in_ioloop = (ioloop_wait_usecs -
+		client->command_queue->start_ioloop_wait_usecs + 999) / 1000;
+	str_printfa(str, " running for %d.%03d + waiting for %d.%03d secs",
+		    (int)((running_usecs+999)/1000 / 1000),
+		    (int)((running_usecs+999)/1000 % 1000),
+		    msecs_in_ioloop / 1000, msecs_in_ioloop % 1000);
+	str_printfa(str, ", %llu B in + %llu+%"PRIuSIZE_T" B out)",
+		    bytes_in, bytes_out,
+		    o_stream_get_buffer_used_size(client->output));
+	return str_c(str);
+}
+
 static void client_default_destroy(struct client *client, const char *reason)
 {
 	struct client_command_context *cmd;
+	const char *cmd_status = "";
 
 	i_assert(!client->destroyed);
 	client->destroyed = TRUE;
 
 	if (!client->disconnected) {
 		client->disconnected = TRUE;
-		if (reason == NULL)
-			reason = client_get_disconnect_reason(client);
-		i_info("%s %s", reason, client_stats(client));
+		if (reason == NULL) {
+			reason = io_stream_get_disconnect_reason(client->input,
+								 client->output);
+			cmd_status = client_get_commands_status(client);
+		}
+		i_info("%s%s %s", reason, cmd_status, client_stats(client));
 	}
-
-	imap_client_count--;
-	DLLIST_REMOVE(&imap_clients, client);
 
 	i_stream_close(client->input);
 	o_stream_close(client->output);
@@ -305,6 +363,9 @@ static void client_default_destroy(struct client *client, const char *reason)
 		array_free(&client->search_updates);
 	pool_unref(&client->command_pool);
 	mail_storage_service_user_free(&client->service_user);
+
+	imap_client_count--;
+	DLLIST_REMOVE(&imap_clients, client);
 	pool_unref(&client->pool);
 
 	master_service_client_connection_destroyed(master_service);
@@ -371,6 +432,28 @@ int client_send_line_next(struct client *client, const char *data)
 	return 1;
 }
 
+static void
+client_cmd_append_timing_stats(struct client_command_context *cmd,
+			       string_t *str)
+{
+	unsigned int msecs_in_cmd, msecs_in_ioloop;
+	uint64_t ioloop_wait_usecs;
+
+	if (cmd->start_time.tv_sec == 0)
+		return;
+
+	ioloop_wait_usecs = io_loop_get_wait_usecs(current_ioloop);
+	msecs_in_cmd = (cmd->running_usecs + 999) / 1000;
+	msecs_in_ioloop = (ioloop_wait_usecs -
+			   cmd->start_ioloop_wait_usecs + 999) / 1000;
+
+	if (str_data(str)[str_len(str)-1] == '.')
+		str_truncate(str, str_len(str)-1);
+	str_printfa(str, " (%d.%03d + %d.%03d secs).",
+		    msecs_in_cmd / 1000, msecs_in_cmd % 1000,
+		    msecs_in_ioloop / 1000, msecs_in_ioloop % 1000);
+}
+
 void client_send_tagline(struct client_command_context *cmd, const char *data)
 {
 	struct client *client = cmd->client;
@@ -385,10 +468,13 @@ void client_send_tagline(struct client_command_context *cmd, const char *data)
 	if (tag == NULL || *tag == '\0')
 		tag = "*";
 
-	o_stream_nsend_str(client->output, tag);
-	o_stream_nsend(client->output, " ", 1);
-	o_stream_nsend_str(client->output, data);
-	o_stream_nsend(client->output, "\r\n", 2);
+	T_BEGIN {
+		string_t *str = t_str_new(256);
+		str_printfa(str, "%s %s", tag, data);
+		client_cmd_append_timing_stats(cmd, str);
+		str_append(str, "\r\n");
+		o_stream_nsend(client->output, str_data(str), str_len(str));
+	} T_END;
 
 	client->last_output = ioloop_time;
 }
@@ -455,6 +541,9 @@ bool client_read_args(struct client_command_context *cmd, unsigned int count,
 		str = t_str_new(256);
 		imap_write_args(str, *args_r);
 		cmd->args = p_strdup(cmd->pool, str_c(str));
+		cmd->start_time = ioloop_timeval;
+		cmd->start_ioloop_wait_usecs =
+			io_loop_get_wait_usecs(current_ioloop);
 
 		cmd->client->input_lock = NULL;
 		return TRUE;
@@ -615,12 +704,10 @@ client_command_new(struct client *client)
 	return cmd;
 }
 
-static void client_add_missing_io(struct client *client)
+void client_add_missing_io(struct client *client)
 {
-	if (client->io == NULL && !client->disconnected) {
-		client->io = io_add(client->fd_in,
-				    IO_READ, client_input, client);
-	}
+	if (client->io == NULL && !client->disconnected)
+		client->io = io_add_istream(client->input, client_input, client);
 }
 
 void client_command_free(struct client_command_context **_cmd)
@@ -651,11 +738,13 @@ void client_command_free(struct client_command_context **_cmd)
 	if (client->mailbox_change_lock == cmd)
 		client->mailbox_change_lock = NULL;
 
-	if (client->free_parser == NULL) {
-		imap_parser_reset(cmd->parser);
-		client->free_parser = cmd->parser;
-	} else if (cmd->parser != NULL) {
-		imap_parser_unref(&cmd->parser);
+	if (cmd->parser != NULL) {
+		if (client->free_parser == NULL) {
+			imap_parser_reset(cmd->parser);
+			client->free_parser = cmd->parser;
+		} else {
+			imap_parser_unref(&cmd->parser);
+		}
 	}
 
 	client->command_queue_size--;
@@ -777,8 +866,7 @@ static bool client_command_input(struct client_command_context *cmd)
 
         if (cmd->func != NULL) {
 		/* command is being executed - continue it */
-		if (command_exec(cmd) ||
-		    cmd->state == CLIENT_COMMAND_STATE_DONE) {
+		if (command_exec(cmd)) {
 			/* command execution was finished */
 			client_command_free(&cmd);
 			client_add_missing_io(client);
@@ -815,8 +903,8 @@ static bool client_command_input(struct client_command_context *cmd)
 
 	client->input_skip_line = TRUE;
 
-	if (cmd->name == '\0') {
-		/* command not given - cmd_func is already NULL. */
+	if (cmd->name[0] == '\0') {
+		/* command not given - cmd->func is already NULL. */
 	} else if ((command = command_find(cmd->name)) != NULL) {
 		cmd->func = command->func;
 		cmd->cmd_flags = command->flags;
@@ -944,6 +1032,7 @@ void client_input(struct client *client)
 	}
 	o_stream_uncork(output);
 	o_stream_unref(&output);
+	imap_refresh_proctitle();
 
 	if (client->disconnected)
 		client_destroy(client, NULL);
@@ -956,7 +1045,7 @@ static void client_output_cmd(struct client_command_context *cmd)
 	bool finished;
 
 	/* continue processing command */
-	finished = command_exec(cmd) || cmd->state == CLIENT_COMMAND_STATE_DONE;
+	finished = command_exec(cmd);
 
 	if (!finished)
 		(void)client_handle_unfinished_cmd(cmd);
@@ -1019,6 +1108,7 @@ int client_output(struct client *client)
 	(void)cmd_sync_delayed(client);
 
 	o_stream_uncork(client->output);
+	imap_refresh_proctitle();
 	if (client->disconnected)
 		client_destroy(client, NULL);
 	else
@@ -1111,14 +1201,18 @@ void client_search_updates_free(struct client *client)
 	array_clear(&client->search_updates);
 }
 
-void clients_destroy_all(void)
+void clients_destroy_all(struct mail_storage_service_ctx *storage_service)
 {
 	while (imap_clients != NULL) {
 		client_send_line(imap_clients, "* BYE Server shutting down.");
+		mail_storage_service_io_activate_user(imap_clients->service_user);
 		client_destroy(imap_clients, "Server shutting down.");
 	}
+	mail_storage_service_io_deactivate(storage_service);
 }
 
 struct imap_client_vfuncs imap_client_vfuncs = {
+	imap_state_export_base,
+	imap_state_import_base,
 	client_default_destroy
 };

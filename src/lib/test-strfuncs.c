@@ -1,8 +1,7 @@
-/* Copyright (c) 2009-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2009-2015 Dovecot authors, see the included COPYING file */
 
 #include "test-lib.h"
 
-#include <stdlib.h>
 
 static void test_p_strarray_dup(void)
 {
@@ -26,6 +25,23 @@ static void test_p_strarray_dup(void)
 		test_assert(ret[j] == NULL);
 		i_free(ret);
 	}
+	test_end();
+}
+
+static void test_t_strsplit(void)
+{
+	const char *const *args;
+
+	test_begin("t_strsplit");
+	/* empty string -> empty array. was this perhaps a mistake for the
+	   API to do this originally?.. can't really change now anyway. */
+	args = t_strsplit("", "\n");
+	test_assert(args[0] == NULL);
+	/* two empty strings */
+	args = t_strsplit("\n", "\n");
+	test_assert(args[0][0] == '\0');
+	test_assert(args[1][0] == '\0');
+	test_assert(args[2] == NULL);
 	test_end();
 }
 
@@ -79,8 +95,24 @@ static void test_t_strsplit_tab(void)
 	test_end();
 }
 
+static void test_t_str_replace(void)
+{
+	test_begin("t_str_replace");
+	test_assert(strcmp(t_str_replace("foo", 'a', 'b'), "foo") == 0);
+	test_assert(strcmp(t_str_replace("fooa", 'a', 'b'), "foob") == 0);
+	test_assert(strcmp(t_str_replace("afooa", 'a', 'b'), "bfoob") == 0);
+	test_assert(strcmp(t_str_replace("", 'a', 'b'), "") == 0);
+	test_assert(strcmp(t_str_replace("a", 'a', 'b'), "b") == 0);
+	test_assert(strcmp(t_str_replace("aaa", 'a', 'b'), "bbb") == 0);
+	test_assert(strcmp(t_str_replace("bbb", 'a', 'b'), "bbb") == 0);
+	test_assert(strcmp(t_str_replace("aba", 'a', 'b'), "bbb") == 0);
+	test_end();
+}
+
 void test_strfuncs(void)
 {
 	test_p_strarray_dup();
+	test_t_strsplit();
 	test_t_strsplit_tab();
+	test_t_str_replace();
 }

@@ -1,11 +1,10 @@
-/* Copyright (c) 2005-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2005-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "mailbox-list-private.h"
 #include "acl-api.h"
 #include "acl-plugin.h"
 
-#include <stdlib.h>
 
 const char *acl_plugin_version = DOVECOT_ABI_VERSION;
 

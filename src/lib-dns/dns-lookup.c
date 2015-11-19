@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2010-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "ioloop.h"
@@ -56,18 +56,9 @@ static void dns_lookup_free(struct dns_lookup **_lookup);
 
 static void dns_client_disconnect(struct dns_client *client, const char *error)
 {
-	struct dns_lookup *lookup;
+	struct dns_lookup *lookup, *next;
 	struct dns_lookup_result result;
 
-	memset(&result, 0, sizeof(result));
-	result.ret = EAI_FAIL;
-	result.error = error;
-
-	while (client->head != NULL) {
-		lookup = client->head;
-		lookup->callback(&result, lookup->context);
-		dns_lookup_free(&lookup);
-	}
 	if (client->to_idle != NULL)
 		timeout_remove(&client->to_idle);
 	if (client->io != NULL)
@@ -78,6 +69,19 @@ static void dns_client_disconnect(struct dns_client *client, const char *error)
 		if (close(client->fd) < 0)
 			i_error("close(%s) failed: %m", client->path);
 		client->fd = -1;
+	}
+
+	memset(&result, 0, sizeof(result));
+	result.ret = EAI_FAIL;
+	result.error = error;
+
+	lookup = client->head;
+	client->head = NULL;
+	while (lookup != NULL) {
+		next = lookup->next;
+		lookup->callback(&result, lookup->context);
+		dns_lookup_free(&lookup);
+		lookup = next;
 	}
 }
 
@@ -100,9 +104,9 @@ static int dns_lookup_input_line(struct dns_lookup *lookup, const char *line)
 			}
 			return 1;
 		}
-		/* first line: <ret> <ip count> */
+		/* first line: <ret> [<ip count>] */
 		if (sscanf(line, "%d %u", &result->ret,
-			   &result->ips_count) != 2)
+			   &result->ips_count) < 1)
 			return -1;
 		if (result->ret != 0) {
 			result->error = net_gethosterror(result->ret);
@@ -242,7 +246,7 @@ static void dns_lookup_free(struct dns_lookup **_lookup)
 	i_free(lookup->ips);
 	if (client->deinit_client_at_free)
 		dns_client_deinit(&client);
-	else if (client->head == NULL) {
+	else if (client->head == NULL && client->fd != -1) {
 		client->to_idle = timeout_add(client->idle_timeout_msecs,
 					      dns_client_idle_timeout, client);
 	}
@@ -258,7 +262,8 @@ void dns_lookup_switch_ioloop(struct dns_lookup *lookup)
 {
 	if (lookup->to != NULL)
 		lookup->to = io_loop_move_timeout(&lookup->to);
-	lookup->client->io = io_loop_move_io(&lookup->client->io);
+	if (lookup->client->deinit_client_at_free)
+		lookup->client->io = io_loop_move_io(&lookup->client->io);
 }
 
 struct dns_client *dns_client_init(const struct dns_lookup_settings *set)
@@ -384,4 +389,16 @@ int dns_client_lookup_ptr(struct dns_client *client, const struct ip_addr *ip,
 	const char *cmd = t_strconcat("NAME\t", net_ip2addr(ip), "\n", NULL);
 	return dns_client_lookup_common(client, cmd, TRUE,
 					callback, context, lookup_r);
+}
+
+void dns_client_switch_ioloop(struct dns_client *client)
+{
+	struct dns_lookup *lookup;
+	
+	if (client->io != NULL)
+		client->io = io_loop_move_io(&client->io);
+	if (client->to_idle != NULL)
+		client->to_idle = io_loop_move_timeout(&client->to_idle);
+	for (lookup = client->head; lookup != NULL; lookup = lookup->next)
+		dns_lookup_switch_ioloop(lookup);
 }

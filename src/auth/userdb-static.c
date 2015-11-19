@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2003-2015 Dovecot authors, see the included COPYING file */
 
 #include "auth-common.h"
 
@@ -8,7 +8,6 @@
 #include "userdb.h"
 #include "userdb-template.h"
 
-#include <stdlib.h>
 
 struct static_context {
 	userdb_callback_t *callback, *old_callback;
@@ -57,7 +56,7 @@ static_credentials_callback(enum passdb_result result,
 		ctx->callback(USERDB_RESULT_USER_UNKNOWN, auth_request);
 		break;
 	case PASSDB_RESULT_SCHEME_NOT_AVAILABLE:
-		auth_request_log_error(auth_request, "static",
+		auth_request_log_error(auth_request, AUTH_SUBSYS_DB,
 			"passdb doesn't support lookups, "
 			"can't verify user's existence");
 		/* fall through */

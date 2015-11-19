@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2002-2015 Dovecot authors, see the included COPYING file */
 
 #include "pop3-common.h"
 #include "array.h"
@@ -26,28 +26,25 @@ static uint32_t msgnum_to_seq(struct client *client, uint32_t msgnum)
 }
 
 static const char *get_msgnum(struct client *client, const char *args,
-			      unsigned int *msgnum)
+			      unsigned int *msgnum, bool thenspace)
 {
-	unsigned int num, last_num;
+	unsigned int num;
 
-	num = 0;
-	while (*args != '\0' && *args != ' ') {
-		if (*args < '0' || *args > '9') {
-			client_send_line(client,
-				"-ERR Invalid message number: %s", args);
-			return NULL;
-		}
-
-		last_num = num;
-		num = num*10 + (*args - '0');
-		if (num < last_num) {
-			client_send_line(client,
-				"-ERR Message number too large: %s", args);
-			return NULL;
-		}
-		args++;
+	if (*args < '0' || *args > '9') {
+		client_send_line(client,
+				 "-ERR Invalid message number: %s", args);
+		return NULL;
 	}
-
+	if (str_parse_uint(args, &num, &args) < 0) {
+		client_send_line(client,
+				 "-ERR Message number too large: %s", args);
+		return NULL;
+	}
+	if (*args != (thenspace ? ' ' : '\0')) {
+		client_send_line(client,
+				 "-ERR Noise after message number: %s", args);
+		return NULL;
+	}
 	if (num == 0 || num > client->messages_count) {
 		client_send_line(client,
 				 "-ERR There's no message %u.", num);
@@ -70,26 +67,23 @@ static const char *get_msgnum(struct client *client, const char *args,
 }
 
 static const char *get_size(struct client *client, const char *args,
-			    uoff_t *size)
+			    uoff_t *size, bool thenspace)
 {
-	uoff_t num, last_num;
+	uoff_t num;
 
-	num = 0;
-	while (*args != '\0' && *args != ' ') {
-		if (*args < '0' || *args > '9') {
-			client_send_line(client, "-ERR Invalid size: %s",
-					 args);
-			return NULL;
-		}
-
-		last_num = num;
-		num = num*10 + (*args - '0');
-		if (num < last_num) {
-			client_send_line(client, "-ERR Size too large: %s",
-					 args);
-			return NULL;
-		}
-		args++;
+	if (*args < '0' || *args > '9') {
+		client_send_line(client, "-ERR Invalid size: %s",
+				 args);
+		return NULL;
+	}
+	if (str_parse_uoff(args, &num, &args) < 0) {
+		client_send_line(client, "-ERR Size too large: %s",
+				 args);
+		return NULL;
+	}
+	if (*args != (thenspace ? ' ' : '\0')) {
+		client_send_line(client, "-ERR Noise after size: %s", args);
+		return NULL;
 	}
 
 	while (*args == ' ') args++;
@@ -108,7 +102,7 @@ static int cmd_dele(struct client *client, const char *args)
 {
 	unsigned int msgnum;
 
-	if (get_msgnum(client, args, &msgnum) == NULL)
+	if (get_msgnum(client, args, &msgnum, FALSE) == NULL)
 		return -1;
 
 	if (!client->deleted) {
@@ -170,7 +164,7 @@ static int cmd_list(struct client *client, const char *args)
 	} else {
 		unsigned int msgnum;
 
-		if (get_msgnum(client, args, &msgnum) == NULL)
+		if (get_msgnum(client, args, &msgnum, FALSE) == NULL)
 			return -1;
 
 		client_send_line(client, "+OK %u %"PRIuUOFF_T, msgnum+1,
@@ -225,11 +219,15 @@ static int client_verify_ordering(struct client *client,
 
 static void client_expunge(struct client *client, struct mail *mail)
 {
-	if (client->deleted_kw != NULL)
-		mail_update_keywords(mail, MODIFY_ADD, client->deleted_kw);
-	else
+	switch (client->set->parsed_delete_type) {
+	case POP3_DELETE_TYPE_EXPUNGE:
 		mail_expunge(mail);
-	client->expunged_count++;
+		break;
+	case POP3_DELETE_TYPE_FLAG:
+		i_assert(client->deleted_kw != NULL);
+		mail_update_keywords(mail, MODIFY_ADD, client->deleted_kw);
+		break;
+	}
 }
 
 bool client_update_mails(struct client *client)
@@ -269,7 +267,6 @@ bool client_update_mails(struct client *client)
 	ctx = mailbox_search_init(client->trans, search_args, NULL, 0, NULL);
 	mail_search_args_unref(&search_args);
 
-	msgnum = 0;
 	while (mailbox_search_next(ctx, &mail)) {
 		if (seq_range_exists(&deleted_msgs, mail->seq))
 			client_expunge(client, mail);
@@ -299,6 +296,8 @@ static int cmd_quit(struct client *client, const char *args ATTR_UNUSED)
 		client_send_storage_error(client);
 		client_disconnect(client, "Storage error during logout.");
 		return 1;
+	} else {
+		client->delete_success = TRUE;
 	}
 
 	if (!client->deleted)
@@ -486,7 +485,7 @@ static int cmd_retr(struct client *client, const char *args)
 {
 	unsigned int msgnum;
 
-	if (get_msgnum(client, args, &msgnum) == NULL)
+	if (get_msgnum(client, args, &msgnum, FALSE) == NULL)
 		return -1;
 
 	if (client->lowest_retr_pop3_msn > msgnum+1 ||
@@ -550,10 +549,10 @@ static int cmd_top(struct client *client, const char *args)
 	unsigned int msgnum;
 	uoff_t max_lines;
 
-	args = get_msgnum(client, args, &msgnum);
+	args = get_msgnum(client, args, &msgnum, TRUE);
 	if (args == NULL)
 		return -1;
-	if (get_size(client, args, &max_lines) == NULL)
+	if (get_size(client, args, &max_lines, FALSE) == NULL)
 		return -1;
 
 	client->top_count++;
@@ -621,7 +620,7 @@ pop3_get_uid(struct client *client, struct mail *mail, string_t *str,
 		}
 	}
 	if ((client->uidl_keymask & UIDL_FILE_NAME) != 0) {
-		if (mail_get_special(mail, MAIL_FETCH_UIDL_FILE_NAME,
+		if (mail_get_special(mail, MAIL_FETCH_STORAGE_ID,
 				     &tab[3].value) < 0) {
 			i_error("UIDL: File name lookup failed: %s",
 				mailbox_get_last_error(mail->box, NULL));
@@ -791,11 +790,13 @@ static void client_uidls_save(struct client *client)
 
 	uidl_duplicates_rename =
 		strcmp(client->set->pop3_uidl_duplicates, "rename") == 0;
-	hash_table_create(&prev_uidls, default_pool, 0, str_hash, strcmp);
+	if (uidl_duplicates_rename)
+		hash_table_create(&prev_uidls, default_pool, 0, str_hash,
+				  strcmp);
 	client->uidl_pool = pool_alloconly_create("message uidls", 1024);
 
 	/* first read all the UIDLs into a temporary [seq] array */
-	seq_uidls = i_new(const char *, client->messages_count);
+	seq_uidls = i_new(const char *, client->highest_seq);
 	str = t_str_new(128);
 	while (mailbox_search_next(search_ctx, &mail)) {
 		str_truncate(str, 0);
@@ -810,11 +811,14 @@ static void client_uidls_save(struct client *client)
 		if (client->set->pop3_save_uidl && !permanent_uidl)
 			mail_update_pop3_uidl(mail, uidl);
 
+		i_assert(mail->seq <= client->highest_seq);
 		seq_uidls[mail->seq-1] = uidl;
-		hash_table_insert(prev_uidls, uidl, POINTER_CAST(1));
+		if (uidl_duplicates_rename)
+			hash_table_insert(prev_uidls, uidl, POINTER_CAST(1));
 	}
 	(void)mailbox_search_deinit(&search_ctx);
-	hash_table_destroy(&prev_uidls);
+	if (uidl_duplicates_rename)
+		hash_table_destroy(&prev_uidls);
 
 	if (failed) {
 		pool_unref(&client->uidl_pool);
@@ -826,7 +830,7 @@ static void client_uidls_save(struct client *client)
 				      client->messages_count+1);
 	for (msgnum = 0; msgnum < client->messages_count; msgnum++) {
 		client->message_uidls[msgnum] =
-			seq_uidls[msgnum_to_seq(client, msgnum)];
+			seq_uidls[msgnum_to_seq(client, msgnum) - 1];
 	}
 	i_free(seq_uidls);
 }
@@ -838,7 +842,8 @@ cmd_uidl_init(struct client *client, uint32_t seq)
 	struct mail_search_args *search_args;
 	enum mail_fetch_field wanted_fields;
 
-	if (client->message_uidls_save && client->message_uidls == NULL)
+	if (client->message_uidls_save && client->message_uidls == NULL &&
+	    client->messages_count > 0)
 		client_uidls_save(client);
 
 	ctx = i_new(struct cmd_uidl_context, 1);
@@ -875,7 +880,7 @@ static int cmd_uidl(struct client *client, const char *args)
 	} else {
 		unsigned int msgnum;
 
-		if (get_msgnum(client, args, &msgnum) == NULL)
+		if (get_msgnum(client, args, &msgnum, FALSE) == NULL)
 			return -1;
 
 		seq = msgnum_to_seq(client, msgnum);

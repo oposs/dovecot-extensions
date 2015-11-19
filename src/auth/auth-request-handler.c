@@ -1,4 +1,4 @@
-/* Copyright (c) 2005-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2005-2015 Dovecot authors, see the included COPYING file */
 
 #include "auth-common.h"
 #include "ioloop.h"
@@ -17,7 +17,6 @@
 #include "auth-master-connection.h"
 #include "auth-request-handler.h"
 
-#include <stdlib.h>
 
 #define AUTH_FAILURE_DELAY_CHECK_MSECS 500
 
@@ -173,11 +172,13 @@ auth_str_append_extra_fields(struct auth_request *request, string_t *dest)
 	}
 
 	if (request->original_username != NULL &&
-	    null_strcmp(request->original_username, request->user) != 0) {
+	    null_strcmp(request->original_username, request->user) != 0 &&
+	    !auth_fields_exists(request->extra_fields, "original_user")) {
 		auth_str_add_keyvalue(dest, "original_user",
 				      request->original_username);
 	}
-	if (request->master_user != NULL)
+	if (request->master_user != NULL &&
+	    !auth_fields_exists(request->extra_fields, "auth_user"))
 		auth_str_add_keyvalue(dest, "auth_user", request->master_user);
 
 	if (!request->auth_only &&
@@ -273,6 +274,8 @@ static void
 auth_request_handler_reply_failure_finish(struct auth_request *request)
 {
 	string_t *str = t_str_new(128);
+
+	auth_fields_remove(request->extra_fields, "nologin");
 
 	str_printfa(str, "FAIL\t%u", request->id);
 	if (request->user != NULL)
@@ -391,7 +394,7 @@ static void auth_request_handler_auth_fail(struct auth_request_handler *handler,
 {
 	string_t *str = t_str_new(128);
 
-	auth_request_log_info(request, request->mech->mech_name, "%s", reason);
+	auth_request_log_info(request, AUTH_SUBSYS_MECH, "%s", reason);
 
 	str_printfa(str, "FAIL\t%u\treason=", request->id);
 	str_append_tabescaped(str, reason);
@@ -406,12 +409,12 @@ static void auth_request_timeout(struct auth_request *request)
 
 	if (request->state != AUTH_REQUEST_STATE_MECH_CONTINUE) {
 		/* client's fault */
-		auth_request_log_error(request, request->mech->mech_name,
+		auth_request_log_error(request, AUTH_SUBSYS_MECH,
 			"Request %u.%u timed out after %u secs, state=%d",
 			request->handler->client_pid, request->id,
 			secs, request->state);
 	} else if (request->set->verbose) {
-		auth_request_log_info(request, request->mech->mech_name,
+		auth_request_log_info(request, AUTH_SUBSYS_MECH,
 			"Request timed out waiting for client to continue authentication "
 			"(%u secs)", secs);
 	}
@@ -471,8 +474,9 @@ bool auth_request_handler_auth_begin(struct auth_request_handler *handler,
 				handler->client_pid, str_sanitize(list[1], MAX_MECH_NAME_LEN));
 			return FALSE;
 		}
-	} else {		 
-		mech = mech_module_find(list[1]);
+	} else {
+		struct auth *auth_default = auth_default_service();
+		mech = mech_register_find(auth_default->reg, list[1]);
 		if (mech == NULL) {
 			/* unsupported mechanism */
 			i_error("BUG: Authentication client %u requested unsupported "

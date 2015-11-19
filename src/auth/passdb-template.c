@@ -1,9 +1,8 @@
-/* Copyright (c) 2003-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2003-2015 Dovecot authors, see the included COPYING file */
 
 #include "auth-common.h"
 #include "array.h"
 #include "str.h"
-#include "var-expand.h"
 #include "passdb.h"
 #include "passdb-template.h"
 
@@ -54,7 +53,8 @@ void passdb_template_export(struct passdb_template *tmpl,
 			value = "";
 		else {
 			str_truncate(str, 0);
-			var_expand(str, args[i+1], table);
+			auth_request_var_expand_with_table(str, args[i+1],
+				auth_request, table, NULL);
 			value = str_c(str);
 		}
 		auth_request_set_field(auth_request, args[i], value,

@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2011-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "str.h"
@@ -10,6 +10,7 @@
 #include "index-mail.h"
 #include "mail-copy.h"
 #include "imapc-client.h"
+#include "mailbox-list-private.h"
 #include "imapc-storage.h"
 #include "imapc-sync.h"
 #include "imapc-mail.h"
@@ -152,9 +153,11 @@ imapc_save_add_to_index(struct imapc_save_context *ctx, uint32_t uid)
 	imail->data.forced_no_caching = TRUE;
 
 	if (ctx->fd != -1) {
-		imail->data.stream = i_stream_create_fd(ctx->fd, 0, TRUE);
-		imapc_mail_init_stream((struct imapc_mail *)imail, TRUE);
-		ctx->fd = -1;
+		struct imapc_mail *imapc_mail = (struct imapc_mail *)imail;
+		imail->data.stream = i_stream_create_fd_autoclose(&ctx->fd, 0);
+		imapc_mail->header_fetched = TRUE;
+		imapc_mail->body_fetched = TRUE;
+		imapc_mail_init_stream(imapc_mail);
 	}
 
 	ctx->save_count++;
@@ -243,7 +246,8 @@ static int imapc_save_append(struct imapc_save_context *ctx)
 	cmd = imapc_client_cmd(ctx->mbox->storage->client->client,
 			       imapc_save_callback, &sctx);
 	imapc_command_sendf(cmd, "APPEND %s%1s%1s %p",
-			    ctx->mbox->box.name, flags, internaldate, input);
+		mailbox_list_unescape_name(ctx->mbox->box.list, ctx->mbox->box.name),
+		flags, internaldate, input);
 	i_stream_unref(&input);
 	while (sctx.ret == -2)
 		imapc_mailbox_run(ctx->mbox);

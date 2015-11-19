@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2013-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "settings-parser.h"
@@ -32,6 +32,7 @@ static const struct setting_define master_service_ssl_setting_defines[] = {
 	DEF(SET_BOOL, ssl_prefer_server_ciphers),
 	DEF(SET_BOOL, ssl_cert_info),
 	DEF(SET_BOOL, ssl_cert_debug),
+	DEF(SET_STR, ssl_options), /* parsed as a string to set bools */
 
 	SETTING_DEFINE_LIST_END
 };
@@ -58,6 +59,7 @@ static const struct master_service_ssl_settings master_service_ssl_default_setti
 	.ssl_prefer_server_ciphers = FALSE,
 	.ssl_cert_info = FALSE,
 	.ssl_cert_debug = FALSE,
+	.ssl_options = "",
 };
 
 const struct setting_parser_info master_service_ssl_setting_parser_info = {
@@ -106,6 +108,24 @@ master_service_ssl_settings_check(void *_set, pool_t pool ATTR_UNUSED,
 		*error_r = "ssl_verify_client_cert set, but ssl_ca not";
 		return FALSE;
 	}
+
+	/* Now explode the ssl_options string into individual flags */
+	/* First set them all to defaults */
+	set->parsed_opts.compression = TRUE;
+
+	/* Then modify anything specified in the string */
+	const char **opts = t_strsplit_spaces(set->ssl_options, ", ");
+	const char *opt;
+	while ((opt = *opts++) != NULL) {
+		if (strcasecmp(opt, "no_compression") == 0) {
+			set->parsed_opts.compression = FALSE;
+		} else {
+			*error_r = t_strdup_printf("ssl_options: unknown flag: '%s'",
+						   opt);
+			return FALSE;
+		}
+	}
+
 	return TRUE;
 #endif
 }

@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2014 Dovecot authors, see the included COPYING memcached */
+/* Copyright (c) 2013-2015 Dovecot authors, see the included COPYING memcached */
 
 #include "lib.h"
 #include "array.h"
@@ -48,7 +48,7 @@ struct memcached_dict {
 	struct dict dict;
 	struct ip_addr ip;
 	char *key_prefix;
-	unsigned int port;
+	in_port_t port;
 	unsigned int timeout_msecs;
 
 	struct ioloop *ioloop;
@@ -169,10 +169,8 @@ static const struct connection_vfuncs memcached_conn_vfuncs = {
 
 static int
 memcached_dict_init(struct dict *driver, const char *uri,
-		    enum dict_data_type value_type ATTR_UNUSED,
-		    const char *username ATTR_UNUSED,
-		    const char *base_dir ATTR_UNUSED, struct dict **dict_r,
-		    const char **error_r)
+		    const struct dict_settings *set ATTR_UNUSED,
+		    struct dict **dict_r, const char **error_r)
 {
 	struct memcached_dict *dict;
 	const char *const *args;
@@ -200,7 +198,7 @@ memcached_dict_init(struct dict *driver, const char *uri,
 				ret = -1;
 			}
 		} else if (strncmp(*args, "port=", 5) == 0) {
-			if (str_to_uint(*args+5, &dict->port) < 0) {
+			if (net_str2port(*args+5, &dict->port) < 0) {
 				*error_r = t_strdup_printf("Invalid port: %s",
 							   *args+5);
 				ret = -1;
@@ -383,6 +381,7 @@ struct dict dict_driver_memcached = {
 		memcached_dict_deinit,
 		NULL,
 		memcached_dict_lookup,
+		NULL,
 		NULL,
 		NULL,
 		NULL,

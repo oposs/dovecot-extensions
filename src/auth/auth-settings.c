@@ -1,4 +1,4 @@
-/* Copyright (c) 2005-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2005-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "array.h"
@@ -32,7 +32,7 @@ static struct file_listener_settings *auth_unix_listeners[] = {
 	&auth_unix_listeners_array[5]
 };
 static buffer_t auth_unix_listeners_buf = {
-	auth_unix_listeners, sizeof(auth_unix_listeners), { 0, }
+	auth_unix_listeners, sizeof(auth_unix_listeners), { NULL, }
 };
 /* </settings checks> */
 
@@ -72,7 +72,7 @@ static struct file_listener_settings *auth_worker_unix_listeners[] = {
 	&auth_worker_unix_listeners_array[0]
 };
 static buffer_t auth_worker_unix_listeners_buf = {
-	auth_worker_unix_listeners, sizeof(auth_worker_unix_listeners), { 0, }
+	auth_worker_unix_listeners, sizeof(auth_worker_unix_listeners), { NULL, }
 };
 /* </settings checks> */
 
@@ -107,6 +107,7 @@ struct service_settings auth_worker_service_settings = {
 	{ type, #name, offsetof(struct auth_passdb_settings, name), NULL }
 
 static const struct setting_define auth_passdb_setting_defines[] = {
+	DEF(SET_STR, name),
 	DEF(SET_STR, driver),
 	DEF(SET_STR, args),
 	DEF(SET_STR, default_fields),
@@ -125,6 +126,7 @@ static const struct setting_define auth_passdb_setting_defines[] = {
 };
 
 static const struct auth_passdb_settings auth_passdb_default_settings = {
+	.name = "",
 	.driver = "",
 	.args = "",
 	.default_fields = "",
@@ -144,7 +146,7 @@ const struct setting_parser_info auth_passdb_setting_parser_info = {
 	.defines = auth_passdb_setting_defines,
 	.defaults = &auth_passdb_default_settings,
 
-	.type_offset = (size_t)-1,
+	.type_offset = offsetof(struct auth_passdb_settings, name),
 	.struct_size = sizeof(struct auth_passdb_settings),
 
 	.parent_offset = (size_t)-1,
@@ -158,6 +160,7 @@ const struct setting_parser_info auth_passdb_setting_parser_info = {
 	{ type, #name, offsetof(struct auth_userdb_settings, name), NULL }
 
 static const struct setting_define auth_userdb_setting_defines[] = {
+	DEF(SET_STR, name),
 	DEF(SET_STR, driver),
 	DEF(SET_STR, args),
 	DEF(SET_STR, default_fields),
@@ -173,6 +176,7 @@ static const struct setting_define auth_userdb_setting_defines[] = {
 
 static const struct auth_userdb_settings auth_userdb_default_settings = {
 	/* NOTE: when adding fields, update also auth.c:userdb_dummy_set */
+	.name = "",
 	.driver = "",
 	.args = "",
 	.default_fields = "",
@@ -188,7 +192,7 @@ const struct setting_parser_info auth_userdb_setting_parser_info = {
 	.defines = auth_userdb_setting_defines,
 	.defaults = &auth_userdb_default_settings,
 
-	.type_offset = (size_t)-1,
+	.type_offset = offsetof(struct auth_userdb_settings, name),
 	.struct_size = sizeof(struct auth_userdb_settings),
 
 	.parent_offset = (size_t)-1,

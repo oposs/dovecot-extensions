@@ -161,14 +161,21 @@ SSL security settings
 
 When Dovecot starts up for the first time, it generates new 512bit and 1024bit
 Diffie Hellman parameters and saves them into
-'<prefix>/var/lib/dovecot/ssl-parameters.ssl'. After the initial creation
+'<prefix>/var/lib/dovecot/ssl-parameters.dat'. After the initial creation
 they're by default regenerated every week. With newer computers the generation
 shouldn't take more than a few seconds, but with older computers it can take as
 long as half an hour. The extra security gained by the regeneration is quite
-small, so with slower computers you might want to disable it:
+small, so with slower computers, for Dovecot versions prior to v2.2, you might
+want to disable it:
 
 ---%<-------------------------------------------------------------------------
 ssl_parameters_regenerate = 0
+---%<-------------------------------------------------------------------------
+
+From version 2.2, you can specify the wanted DH parameters length using:
+
+---%<-------------------------------------------------------------------------
+ssl_dh_parameters_length = 2048
 ---%<-------------------------------------------------------------------------
 
 By default Dovecot's allowed ciphers list contains:
@@ -202,7 +209,7 @@ ssl_ca = </etc/ssl/ca.pem
 ssl_verify_client_cert = yes
 
 auth_ssl_require_client_cert = yes
-#ssl_username_from_cert = yes
+#auth_ssl_username_from_cert = yes
 ---%<-------------------------------------------------------------------------
 
 The CA file should contain the certificate(s) followed by the matching CRL(s).
@@ -241,7 +248,7 @@ protocol !smtp {
 ---%<-------------------------------------------------------------------------
 
 You may also force the username to be taken from the certificate by setting
-'ssl_username_from_cert = yes'.
+'auth_ssl_username_from_cert = yes'.
 
  * The text is looked up from subject DN's specified field using OpenSSL's
    'X509_NAME_get_text_by_NID()' function.
@@ -368,4 +375,4 @@ B8A55EC91A060575CFB29503FBF7160C2DC8BCBFE02D20A7F704882F72D8D00272D8D002CE5CCC4B
 +OK Dovecot ready.
 ---%<-------------------------------------------------------------------------
 
-(This file was created from the wiki on 2014-02-11 22:29)
+(This file was created from the wiki on 2015-10-02 04:48)

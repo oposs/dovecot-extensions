@@ -1,8 +1,7 @@
-/* Copyright (c) 2006-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2006-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 
-#include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>

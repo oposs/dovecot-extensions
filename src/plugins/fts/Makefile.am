@@ -4,7 +4,10 @@ doveadm_moduledir = $(moduledir)/doveadm
 AM_CPPFLAGS = \
 	-I$(top_srcdir)/src/lib \
 	-I$(top_srcdir)/src/lib-settings \
+	-I$(top_srcdir)/src/lib-fts \
+	-I$(top_srcdir)/src/lib-http \
 	-I$(top_srcdir)/src/lib-mail \
+	-I$(top_srcdir)/src/lib-imap \
 	-I$(top_srcdir)/src/lib-index \
 	-I$(top_srcdir)/src/lib-storage \
 	-I$(top_srcdir)/src/lib-storage/index \
@@ -17,6 +20,8 @@ lib20_fts_plugin_la_LDFLAGS = -module -avoid-version
 module_LTLIBRARIES = \
 	lib20_fts_plugin.la
 
+lib20_fts_plugin_la_LIBADD = ../../lib-fts/libfts.la
+
 lib20_fts_plugin_la_SOURCES = \
 	fts-api.c \
 	fts-build-mail.c \
@@ -25,21 +30,28 @@ lib20_fts_plugin_la_SOURCES = \
 	fts-parser.c \
 	fts-parser-html.c \
 	fts-parser-script.c \
+	fts-parser-tika.c \
 	fts-plugin.c \
 	fts-search.c \
+	fts-search-args.c \
 	fts-search-serialize.c \
-	fts-storage.c
+	fts-storage.c \
+	fts-user.c
 
-noinst_HEADERS = \
-	doveadm-fts.h \
-	html-entities.h \
+pkginc_libdir=$(pkgincludedir)
+pkginc_lib_HEADERS = \
 	fts-api.h \
 	fts-api-private.h \
-	fts-build-mail.h \
 	fts-expunge-log.h \
 	fts-indexer.h \
 	fts-parser.h \
+	fts-user.h
+
+noinst_HEADERS = \
+	doveadm-fts.h \
+	fts-build-mail.h \
 	fts-plugin.h \
+	fts-search-args.h \
 	fts-search-serialize.h \
 	fts-storage.h
 

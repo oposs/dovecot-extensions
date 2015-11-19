@@ -74,7 +74,7 @@ Verifying recipients using LMTP
 
 You can use callout verification to avoid accepting mail for addresses which do
 not exist in Dovecot. Below is a config snippet which could be used in
-acl_check_rcpt to achieve this:
+acl_smtp_rcpt to achieve this:
 
 ---%<-------------------------------------------------------------------------
 deny
@@ -123,4 +123,4 @@ lowercase_local:
 Make sure to reference the name you have chosen for your local delivery router
 within /redirect_router/.
 
-(This file was created from the wiki on 2014-02-11 22:29)
+(This file was created from the wiki on 2015-10-02 04:47)

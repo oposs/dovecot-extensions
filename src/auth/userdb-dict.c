@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2013-2015 Dovecot authors, see the included COPYING file */
 
 #include "auth-common.h"
 #include "userdb.h"
@@ -6,12 +6,10 @@
 #include "ioloop.h"
 #include "array.h"
 #include "str.h"
-#include "var-expand.h"
 #include "auth-cache.h"
 #include "db-dict.h"
 
 #include <dict.h>
-#include <stdlib.h>
 
 struct dict_userdb_module {
 	struct userdb_module module;
@@ -39,7 +37,7 @@ dict_query_save_results(struct auth_request *auth_request,
 			auth_request_set_userdb_field(auth_request, key, value);
 	}
 	if (db_dict_value_iter_deinit(&iter, &error) < 0) {
-		auth_request_log_error(auth_request, "dict", "%s", error);
+		auth_request_log_error(auth_request, AUTH_SUBSYS_DB, "%s", error);
 		return -1;
 	}
 	return 0;
@@ -57,7 +55,7 @@ static void userdb_dict_lookup(struct auth_request *auth_request,
 
 	if (array_count(&module->conn->set.userdb_fields) == 0 &&
 	    array_count(&module->conn->set.parsed_userdb_objects) == 0) {
-		auth_request_log_error(auth_request, "dict",
+		auth_request_log_error(auth_request, AUTH_SUBSYS_DB,
 			"No userdb_objects or userdb_fields specified");
 		callback(USERDB_RESULT_INTERNAL_FAILURE, auth_request);
 		return;
@@ -70,7 +68,7 @@ static void userdb_dict_lookup(struct auth_request *auth_request,
 	if (ret < 0)
 		userdb_result = USERDB_RESULT_INTERNAL_FAILURE;
 	else if (ret == 0) {
-		auth_request_log_unknown_user(auth_request, "dict");
+		auth_request_log_unknown_user(auth_request, AUTH_SUBSYS_DB);
 		userdb_result = USERDB_RESULT_USER_UNKNOWN;
 	} else {
 		if (dict_query_save_results(auth_request, iter) < 0)
@@ -89,7 +87,6 @@ userdb_dict_iterate_init(struct auth_request *auth_request,
 	struct dict_userdb_module *module =
 		(struct dict_userdb_module *)_module;
 	struct dict_userdb_iterate_context *ctx;
-        const struct var_expand_table *vars;
 	string_t *path;
 
 	ctx = i_new(struct dict_userdb_iterate_context, 1);
@@ -100,7 +97,7 @@ userdb_dict_iterate_init(struct auth_request *auth_request,
 
 	if (*module->conn->set.iterate_prefix == '\0') {
 		if (!module->conn->set.iterate_disable) {
-			auth_request_log_error(auth_request, "dict",
+			auth_request_log_error(auth_request, AUTH_SUBSYS_DB,
 					       "iterate: iterate_prefix not set");
 			ctx->ctx.failed = TRUE;
 		}
@@ -109,14 +106,14 @@ userdb_dict_iterate_init(struct auth_request *auth_request,
 
 	path = t_str_new(128);
 	str_append(path, DICT_PATH_SHARED);
-	vars = auth_request_get_var_expand_table(auth_request, NULL);
-	var_expand(path, module->conn->set.iterate_prefix, vars);
+	auth_request_var_expand(path, module->conn->set.iterate_prefix,
+				auth_request, NULL);
 	ctx->key_prefix = p_strdup(auth_request->pool, str_c(path));
 	ctx->key_prefix_len = strlen(ctx->key_prefix);
 
 	ctx->iter = dict_iterate_init(module->conn->dict, ctx->key_prefix, 0);
-	auth_request_log_debug(auth_request, "dict", "iterate: prefix=%s",
-			       ctx->key_prefix);
+	auth_request_log_debug(auth_request, AUTH_SUBSYS_DB,
+			       "iterate: prefix=%s", ctx->key_prefix);
 	return &ctx->ctx;
 }
 

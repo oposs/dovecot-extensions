@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2013-2015 Dovecot authors, see the included COPYING file */
 
 #include "auth-common.h"
 
@@ -13,7 +13,6 @@
 #include "db-dict.h"
 
 #include <stddef.h>
-#include <stdlib.h>
 
 enum dict_settings_section {
 	DICT_SETTINGS_SECTION_ROOT = 0,
@@ -206,10 +205,14 @@ static bool parse_section(const char *type, const char *name,
 		return FALSE;
 	}
 	if (strcmp(type, "key") == 0) {
-		if (name == NULL)
-			return "Key section is missing name";
-		if (strchr(name, '.') != NULL)
-			return "Key section names must not contain '.'";
+		if (name == NULL) {
+			*errormsg = "Key section is missing name";
+			return FALSE;
+		}
+		if (strchr(name, '.') != NULL) {
+			*errormsg = "Key section names must not contain '.'";
+			return FALSE;
+		}
 		ctx->section = DICT_SETTINGS_SECTION_KEY;
 		ctx->cur_key = array_append_space(&ctx->conn->set.keys);
 		*ctx->cur_key = default_key_settings;
@@ -408,15 +411,15 @@ static int db_dict_iter_lookup_key_values(struct db_dict_value_iter *iter)
 		ret = dict_lookup(iter->conn->dict, iter->pool,
 				  str_c(path), &key->value);
 		if (ret > 0) {
-			auth_request_log_debug(iter->auth_request, "dict",
+			auth_request_log_debug(iter->auth_request, AUTH_SUBSYS_DB,
 					       "Lookup: %s = %s", str_c(path),
 					       key->value);
 		} else if (ret < 0) {
-			auth_request_log_error(iter->auth_request, "dict",
+			auth_request_log_error(iter->auth_request, AUTH_SUBSYS_DB,
 				"Failed to lookup key %s", str_c(path));
 			return -1;
 		} else if (key->key->default_value != NULL) {
-			auth_request_log_debug(iter->auth_request, "dict",
+			auth_request_log_debug(iter->auth_request, AUTH_SUBSYS_DB,
 				"Lookup: %s not found, using default value %s",
 				str_c(path), key->key->default_value);
 			key->value = key->key->default_value;
@@ -439,7 +442,7 @@ int db_dict_value_iter_init(struct dict_connection *conn,
 	pool_t pool;
 	int ret;
 
-	pool = pool_alloconly_create("auth dict lookup", 1024);
+	pool = pool_alloconly_create(MEMPOOL_GROWING"auth dict lookup", 1024);
 	iter = p_new(pool, struct db_dict_value_iter, 1);
 	iter->pool = pool;
 	iter->conn = conn;

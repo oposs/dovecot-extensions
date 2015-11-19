@@ -1,10 +1,9 @@
-/* Copyright (c) 2009-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2009-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "str.h"
 #include "abspath.h"
 
-#include <stdlib.h>
 #include <unistd.h>
 
 const char *t_abspath(const char *path)

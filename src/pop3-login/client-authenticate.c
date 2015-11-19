@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2002-2015 Dovecot authors, see the included COPYING file */
 
 #include "login-common.h"
 #include "base64.h"
@@ -17,9 +17,8 @@
 #include "client-authenticate.h"
 #include "pop3-proxy.h"
 
-#include <stdlib.h>
 
-const char *capability_string = POP3_CAPABILITY_REPLY;
+static const char *capability_string = POP3_CAPABILITY_REPLY;
 
 bool cmd_capa(struct pop3_client *client, const char *args ATTR_UNUSED)
 {

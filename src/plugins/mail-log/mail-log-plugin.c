@@ -1,4 +1,4 @@
-/* Copyright (c) 2007-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2007-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "array.h"
@@ -11,7 +11,6 @@
 #include "notify-plugin.h"
 #include "mail-log-plugin.h"
 
-#include <stdlib.h>
 
 #define MAILBOX_NAME_LOG_LEN 64
 #define HEADER_LOG_LEN 80

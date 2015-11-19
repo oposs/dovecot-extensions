@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2010-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "array.h"
@@ -182,7 +182,8 @@ static void cmd_mailbox_list_deinit(struct doveadm_mail_cmd_context *_ctx)
 {
 	struct list_cmd_context *ctx = (struct list_cmd_context *)_ctx;
 
-	mail_search_args_unref(&ctx->search_args);
+	if (ctx->search_args != NULL)
+		mail_search_args_unref(&ctx->search_args);
 }
 
 static struct doveadm_mail_cmd_context *cmd_mailbox_list_alloc(void)
@@ -305,7 +306,8 @@ get_child_mailboxes(struct mail_user *user, ARRAY_TYPE(const_string) *mailboxes,
 	const char *pattern, *child_name;
 
 	ns = mail_namespace_find(user->namespaces, name);
-	pattern = t_strdup_printf("%s%c*", name, mail_namespace_get_sep(ns));
+	pattern = name[0] == '\0' ? "*" :
+		t_strdup_printf("%s%c*", name, mail_namespace_get_sep(ns));
 	iter = mailbox_list_iter_init(ns->list, pattern,
 				      MAILBOX_LIST_ITER_RETURN_NO_FLAGS);
 	while ((info = mailbox_list_iter_next(iter)) != NULL) {
@@ -336,7 +338,8 @@ cmd_mailbox_delete_run(struct doveadm_mail_cmd_context *_ctx,
 				doveadm_mail_failed_error(_ctx, MAIL_ERROR_TEMP);
 				ret = -1;
 			}
-			array_append(&recursive_mailboxes, namep, 1);
+			if ((*namep)[0] != '\0')
+				array_append(&recursive_mailboxes, namep, 1);
 		}
 		array_sort(&recursive_mailboxes, i_strcmp_reverse_p);
 		mailboxes = &recursive_mailboxes;

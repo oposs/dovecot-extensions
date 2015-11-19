@@ -8,7 +8,6 @@ EXTRA_DIST = \
 
 wikifiles = ACL.txt \
 	AixPluginsSupport.txt \
-	AntiSpam.txt \
 	AuthDatabase.CheckPassword.txt \
 	AuthDatabase.Dict.txt \
 	AuthDatabase.LDAP.AuthBinds.txt \
@@ -74,23 +73,23 @@ wikifiles = ACL.txt \
 	Design.Strings.txt \
 	Design.txt \
 	Dict.txt \
+	Dictionary.txt \
 	Director.txt \
 	DomainLost.txt \
 	Errors.ChgrpNoPerm.txt \
 	FindMailLocation.txt \
 	FinishBasicConfiguration.txt \
-	HowTo.ConvertPasswordSchemes.txt \
+	HAProxy.txt \
 	HowTo.EximAndDovecotSASL.txt \
-	HowTo.F5SLBTLSOffload.txt \
 	HowTo.ImapcProxy.txt \
 	HowTo.PopBSMTPAndDovecot.txt \
 	HowTo.PopRelay.txt \
 	HowTo.PostfixAndDovecotSASL.txt \
 	HowTo.Rootless.txt \
 	HowTo.SimpleVirtualInstall.txt \
-	HowTo.TriggerGetmailOnIMAPAccess.txt \
-	HowTo.Virtual(2b)Postfix(2b)Dspam(2b)Dovecot.txt \
 	HowTo.txt \
+	IMAPServer.txt \
+	ImapMetadata.txt \
 	IndexFiles.txt \
 	LDA.Exim.txt \
 	LDA.Indexing.txt \
@@ -119,7 +118,6 @@ wikifiles = ACL.txt \
 	MailboxFormat.mbx.txt \
 	MailboxFormat.txt \
 	MailboxSettings.txt \
-	MainConfig.txt \
 	MboxChildFolders.txt \
 	MboxLocking.txt \
 	MboxProblems.txt \
@@ -161,8 +159,14 @@ wikifiles = ACL.txt \
 	Pigeonhole.ManageSieve.Install.txt \
 	Pigeonhole.ManageSieve.Troubleshooting.txt \
 	Pigeonhole.ManageSieve.txt \
+	Pigeonhole.Sieve.Configuration.Dict.txt \
+	Pigeonhole.Sieve.Configuration.File.txt \
+	Pigeonhole.Sieve.Configuration.LDAP.txt \
 	Pigeonhole.Sieve.Configuration.txt \
 	Pigeonhole.Sieve.Examples.txt \
+	Pigeonhole.Sieve.Extensions.Duplicate.txt \
+	Pigeonhole.Sieve.Extensions.Editheader.txt \
+	Pigeonhole.Sieve.Extensions.Include.txt \
 	Pigeonhole.Sieve.Extensions.SpamtestVirustest.txt \
 	Pigeonhole.Sieve.Extensions.Vacation.txt \
 	Pigeonhole.Sieve.Extensions.txt \
@@ -181,12 +185,14 @@ wikifiles = ACL.txt \
 	Plugins.FTS.Solr.txt \
 	Plugins.FTS.Squat.txt \
 	Plugins.FTS.txt \
+	Plugins.LastLogin.txt \
 	Plugins.Lazyexpunge.txt \
 	Plugins.Listescape.txt \
 	Plugins.MailFilter.txt \
 	Plugins.MailLog.txt \
 	Plugins.MailboxAlias.txt \
 	Plugins.Notify.txt \
+	Plugins.QuotaClone.txt \
 	Plugins.Snarf.txt \
 	Plugins.Stats.txt \
 	Plugins.Trash.txt \
@@ -212,6 +218,7 @@ wikifiles = ACL.txt \
 	Sasl.txt \
 	SecurityTuning.txt \
 	Services.txt \
+	SharedMailboxes.ClusterSetup.txt \
 	SharedMailboxes.Permissions.txt \
 	SharedMailboxes.Public.txt \
 	SharedMailboxes.Shared.txt \
@@ -223,6 +230,7 @@ wikifiles = ACL.txt \
 	TestInstallation.txt \
 	TestPop3Installation.txt \
 	TimeMovedBackwards.txt \
+	Timeouts.txt \
 	Upgrading.1.0.txt \
 	Upgrading.1.1.txt \
 	Upgrading.1.2.txt \

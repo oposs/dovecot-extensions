@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2006-2015 Dovecot authors, see the included COPYING file */
 
 #include "lib.h"
 #include "array.h"
@@ -210,6 +210,9 @@ int acl_default_object_list_next(struct acl_object_list_iter *iter,
 {
 	const struct acl_rights *rights;
 
+	if (iter->failed)
+		return -1;
+
 	if (iter->idx == array_count(&iter->aclobj->rights))
 		return 0;
 
@@ -363,7 +366,7 @@ const char *acl_rights_export(const struct acl_rights *rights)
 
 	if (rights->rights != NULL)
 		str_append(str, t_strarray_join(rights->rights, " "));
-	if (rights->neg_rights != NULL) {
+	if (rights->neg_rights != NULL && rights->neg_rights[0] != NULL) {
 		if (str_len(str) > 0)
 			str_append_c(str, ' ');
 		str_append_c(str, '-');

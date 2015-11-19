@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2002-2015 Dovecot authors, see the included COPYING file */
 
 #include "auth-common.h"
 #include "userdb.h"
@@ -8,7 +8,6 @@
 #include "istream.h"
 #include "str.h"
 #include "auth-cache.h"
-#include "var-expand.h"
 #include "db-passwd-file.h"
 
 #include <unistd.h>
@@ -74,8 +73,11 @@ static void passwd_file_lookup(struct auth_request *auth_request,
 			if (value != NULL) {
 				key = t_strdup_until(key, value);
 				str_truncate(str, 0);
-				var_expand(str, value + 1, table);
+				auth_request_var_expand_with_table(str, value + 1,
+					auth_request, table, NULL);
 				value = str_c(str);
+			} else {
+				value = "";
 			}
 			auth_request_set_userdb_field(auth_request, key, value);
 		}
@@ -113,7 +115,7 @@ passwd_file_iterate_init(struct auth_request *auth_request,
 		i_error("open(%s) failed: %m", ctx->path);
 		ctx->ctx.failed = TRUE;
 	} else {
-		ctx->input = i_stream_create_fd(fd, (size_t)-1, TRUE);
+		ctx->input = i_stream_create_fd_autoclose(&fd, (size_t)-1);
 	}
 	return &ctx->ctx;
 }

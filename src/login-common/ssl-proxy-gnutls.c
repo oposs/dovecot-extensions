@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2014 Dovecot authors, see the included COPYING file */
+/* Copyright (c) 2002-2015 Dovecot authors, see the included COPYING file */
 
 #include "login-common.h"
 #include "ioloop.h"
@@ -11,7 +11,6 @@
 #error broken currently
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <gcrypt.h>
@@ -367,13 +366,13 @@ static void read_next_field(int fd, gnutls_datum *datum,
 		i_fatal("read() failed for %s: %m", fname);
 
 	if (ret != sizeof(datum->size)) {
-		(void)unlink(fname);
+		i_unlink(fname);
 		i_fatal("Corrupted SSL parameter file %s: File too small",
 			fname);
 	}
 
 	if (datum->size > 10240) {
-		(void)unlink(fname);
+		i_unlink(fname);
 		i_fatal("Corrupted SSL parameter file %s: "
 			"Field '%s' too large (%u)",
 			fname, field_name, datum->size);
@@ -386,7 +385,7 @@ static void read_next_field(int fd, gnutls_datum *datum,
 		i_fatal("read() failed for %s: %m", fname);
 
 	if ((size_t)ret != datum->size) {
-		(void)unlink(fname);
+		i_unlink(fname);
 		i_fatal("Corrupted SSL parameter file %s: "
 			"Field '%s' not fully in file (%u < %u)",
 			fname, field_name, datum->size - ret, datum->size);
@@ -408,7 +407,7 @@ static void read_dh_parameters(int fd, const char *fname)
 		read_next_field(fd, &dbits, fname, "DH bits");
 
 		if (dbits.size != sizeof(int)) {
-			(void)unlink(fname);
+			i_unlink(fname);
 			i_fatal("Corrupted SSL parameter file %s: "
 				"Field 'DH bits' has invalid size %u",
 				fname, dbits.size);
