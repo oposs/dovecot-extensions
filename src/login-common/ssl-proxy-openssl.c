@@ -1503,7 +1503,7 @@ const char *__ssl_proxy_get_fingerprint(struct ssl_proxy *proxy, bool base64mode
 {
     X509 *x509;
     char *peer_fingerprint = NULL;
-    char *ssl_cert_md_algorithm = NULL;
+    const char *ssl_cert_md_algorithm = NULL;
     const EVP_MD *md_alg;
     unsigned char md_buf[EVP_MAX_MD_SIZE];
     unsigned int md_len;
