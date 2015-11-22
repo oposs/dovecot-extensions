@@ -1,4 +1,8 @@
 #!/bin/sh
+# Build Script 
+# Manuel Oetiker <manuel@oetiker.ch>
+
+BASE_PATH=/vagrant
 
 cat > /etc/sysconfig/i18n << EOF
 LANG="en_US.UTF-8"
@@ -23,13 +27,11 @@ yum --assumeyes install pam-devel bzip2-devel libcap-devel libtool mysql-devel q
 	    gettext-devel libcurl-devel postgresql-devel expat-devel openldap-devel \
 	    rpm-build redhat-rpm-config make gcc 
 
-if [ ! -f SOURCES/dovecot-2.2.19.tar.gz ]
+if [ ! -f ${BASE_PATH}/SOURCES/dovecot-2.2.19.tar.gz ]
 	then
-        ( cd SOURCES ; \
+        ( cd ${BASE_PATH}/SOURCES ; \
 	  wget http://www.dovecot.org/releases/2.2/dovecot-2.2.19.tar.gz  )
 fi
 
-rpmbuild -v -ba SPECS/dovecot.spec
-
-
+rpmbuild -v -ba ${BASE_PATH}/SPECS/dovecot.spec
 
