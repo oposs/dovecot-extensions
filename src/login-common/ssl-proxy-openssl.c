@@ -1120,8 +1120,6 @@ ssl_proxy_ctx_verify_client(SSL_CTX *ssl_ctx, STACK_OF(X509_NAME) *ca_names)
 #endif
 	SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE,
 			   ssl_verify_client_cert);
-        /* session cache fails quite often ... disable it */
-        SSL_CTX_set_session_cache_mode(ssl_ctx, SSL_SESS_CACHE_OFF);
 	/* set list of CA names that are sent to client */
 	SSL_CTX_set_client_CA_list(ssl_ctx, ca_names);
 }
@@ -1333,7 +1331,10 @@ ssl_server_context_init(const struct login_settings *login_set,
 		in the verify callback, the exceeding of the actual depth.
 	*/
 
-    SSL_CTX_set_verify_depth(ssl_ctx, ctx->verify_depth + 1);
+        SSL_CTX_set_verify_depth(ssl_ctx, ctx->verify_depth + 1);
+
+        /* session cache fails quite often ... disable it */
+        SSL_CTX_set_session_cache_mode(ssl_ctx, SSL_SESS_CACHE_OFF);
 
 	if (SSL_CTX_set_cipher_list(ssl_ctx, ctx->cipher_list) != 1) {
 		i_fatal("Can't set cipher list to '%s': %s",
