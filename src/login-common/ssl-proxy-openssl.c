@@ -1120,6 +1120,8 @@ ssl_proxy_ctx_verify_client(SSL_CTX *ssl_ctx, STACK_OF(X509_NAME) *ca_names)
 #endif
 	SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE,
 			   ssl_verify_client_cert);
+        /* session cache fails quite often ... disable it */
+        SSL_CTX_set_session_cache_mode(ssl_ctx, SSL_SESS_CACHE_OFF);
 	/* set list of CA names that are sent to client */
 	SSL_CTX_set_client_CA_list(ssl_ctx, ca_names);
 }
